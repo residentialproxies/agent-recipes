@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import secrets
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
 
 from src.config import settings
@@ -101,5 +102,9 @@ def setup_request_size_limit(app: FastAPI) -> None:
     async def limit_request_size(request: Request, call_next):
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > 10_000_000:
-            raise HTTPException(status_code=413, detail="Payload too large")
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Payload too large"},
+                headers={"Cache-Control": "no-store"},
+            )
         return await call_next(request)

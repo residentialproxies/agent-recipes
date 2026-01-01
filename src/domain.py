@@ -1,11 +1,109 @@
 from __future__ import annotations
 
 import re
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
+from pydantic import BaseModel, Field, field_validator
 
 
 # CATEGORY_ICONS is now imported from src.config to avoid duplication
 # from src.config import CATEGORY_ICONS  # noqa: F401 (kept for reference)
+
+
+# =============================================================================
+# Pydantic Models for Type Safety
+# =============================================================================
+
+class Agent(BaseModel):
+    """Pydantic model for agent data with validation."""
+
+    id: str = Field(..., description="Unique agent identifier")
+    name: str = Field(..., description="Human-readable agent name")
+    description: str = Field(..., description="One-sentence summary")
+    category: str = Field(..., description="Agent category")
+    frameworks: List[str] = Field(default_factory=list, description="Frameworks used")
+    llm_providers: List[str] = Field(default_factory=list, description="LLM providers")
+    requires_gpu: bool = Field(default=False, description="Requires GPU")
+    supports_local_models: bool = Field(default=False, description="Supports local models")
+    design_pattern: str = Field(default="other", description="Design pattern")
+    complexity: str = Field(..., description="Complexity level")
+    quick_start: str = Field(default="", description="Quick start commands")
+    clone_command: str = Field(default="", description="Git clone command")
+    github_url: str = Field(..., description="GitHub URL")
+    codespaces_url: Optional[str] = Field(None, description="GitHub Codespaces URL")
+    colab_url: Optional[str] = Field(None, description="Google Colab URL")
+    stars: Optional[int] = Field(None, description="GitHub stars")
+    folder_path: str = Field(..., description="Folder path in source repo")
+    readme_relpath: str = Field(..., description="Relative path to README")
+    updated_at: Optional[int] = Field(None, description="Last update timestamp")
+    api_keys: List[str] = Field(default_factory=list, description="Required API keys")
+    languages: List[str] = Field(default_factory=list, description="Programming languages")
+    tags: List[str] = Field(default_factory=list, description="Search tags")
+    content_hash: str = Field(default="", description="Content hash for caching")
+
+    @field_validator("complexity")
+    @classmethod
+    def validate_complexity(cls, v: str) -> str:
+        """Validate complexity level."""
+        valid = {"beginner", "intermediate", "advanced"}
+        if v.lower() not in valid:
+            return "intermediate"
+        return v.lower()
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: str) -> str:
+        """Validate category."""
+        valid_categories = {
+            "rag", "chatbot", "agent", "multi_agent", "automation",
+            "search", "vision", "voice", "coding", "finance", "research", "other"
+        }
+        if v.lower() not in valid_categories:
+            return "other"
+        return v.lower()
+
+    class Config:
+        """Pydantic configuration."""
+        json_schema_extra = {
+            "example": {
+                "id": "example_agent",
+                "name": "Example Agent",
+                "description": "An example agent for demonstration",
+                "category": "chatbot",
+                "frameworks": ["langchain"],
+                "llm_providers": ["openai"],
+                "complexity": "beginner",
+                "github_url": "https://github.com/example/repo",
+                "folder_path": "examples/chatbot",
+                "readme_relpath": "examples/chatbot/README.md"
+            }
+        }
+
+
+class AgentSearchQuery(BaseModel):
+    """Pydantic model for search query parameters."""
+
+    query: str = Field(default="", description="Search query text")
+    category: Optional[str] = Field(None, description="Filter by category")
+    frameworks: List[str] = Field(default_factory=list, description="Filter by frameworks")
+    llm_providers: List[str] = Field(default_factory=list, description="Filter by LLM providers")
+    complexity: Optional[str] = Field(None, description="Filter by complexity")
+    supports_local_models: Optional[bool] = Field(None, description="Filter by local model support")
+    limit: int = Field(default=50, ge=1, le=200, description="Result limit")
+    offset: int = Field(default=0, ge=0, description="Result offset")
+
+
+class AgentSearchResult(BaseModel):
+    """Pydantic model for search results."""
+
+    agents: List[Agent] = Field(..., description="List of matching agents")
+    total: int = Field(..., description="Total number of results")
+    offset: int = Field(..., description="Current offset")
+    limit: int = Field(..., description="Current limit")
+
+
+# =============================================================================
+# Domain Functions
+# =============================================================================
 
 
 def complexity_rank(value: str) -> int:

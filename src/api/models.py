@@ -17,6 +17,7 @@ class SearchRequest(BaseModel):
     provider: Optional[Union[List[str], str]] = None
     complexity: Optional[Union[List[str], str]] = None
     local_only: bool = False
+    sort: Optional[str] = Field(default=None, max_length=40)
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=100)
 
@@ -54,4 +55,3 @@ class WebManusConsultResponse(BaseModel):
 
     recommendations: List[WebManusRecommendation] = Field(default_factory=list)
     no_match_suggestion: str = Field(default="", max_length=800)
-

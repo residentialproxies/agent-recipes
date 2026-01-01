@@ -1,18 +1,29 @@
 # Agent Navigator
 
-Agent Navigator turns a large “awesome list” style repository of LLM apps into a searchable discovery UI. It ships with:
+Agent Navigator turns a large "awesome list" style repository of LLM apps into a searchable discovery UI. It ships with:
 
 - A repository indexer (`src/indexer.py`) that builds `data/agents.json`
-- A Streamlit app (`src/app.py`) with search, filters, sorting, and detail pages
-- A FastAPI backend (`src/api/`) for a separate frontend (e.g. Next.js SSR)
+- A Next.js production frontend (`nextjs-app/`) with SSR/ISR support
+- A FastAPI backend (`src/api/`) for the frontend and headless access
+- A Streamlit admin UI (`tools/streamlit_app.py`) for internal use
 - An optional static site exporter (`src/export_static.py`) for SEO / fallback hosting
 
 ## Quickstart
 
+**Production Frontend (Next.js):**
+
+```bash
+cd nextjs-app
+npm install
+npm run dev  # Visit http://localhost:3000
+```
+
+**Admin UI (Streamlit - Internal Only):**
+
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-streamlit run src/app.py
+streamlit run tools/streamlit_app.py
 ```
 
 ## API Server (for Next.js SSR frontend)

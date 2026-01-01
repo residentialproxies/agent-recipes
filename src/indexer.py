@@ -30,6 +30,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import time
 import functools
 import threading
@@ -314,6 +315,35 @@ Rules:
 - supports_local_models: true if ollama, llama.cpp, vLLM, GGUF, etc. are mentioned.
 - Return ONLY valid JSON (no markdown, no explanation).
 """
+
+
+def atomic_write_json(path: Path, data: Any) -> None:
+    """
+    Atomically write JSON data to a file.
+
+    This prevents corruption if the process crashes or API reads during write.
+    Uses a temporary file and atomic rename (POSIX compliant).
+
+    Args:
+        path: Target file path
+        data: Data to serialize as JSON
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Write to temp file in same directory (required for atomic rename)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        dir=path.parent,
+        delete=False,
+        encoding="utf-8",
+        suffix=".tmp",
+        prefix=".indexer_"
+    ) as tmp:
+        json.dump(data, tmp, indent=2, ensure_ascii=False)
+        tmp_name = tmp.name
+
+    # Atomic rename (POSIX guarantees atomicity)
+    os.replace(tmp_name, path)
 
 
 def _content_hash(content: str) -> str:
@@ -615,8 +645,7 @@ class HTTPCache:
     def _save(self) -> None:
         """Save cache to disk."""
         try:
-            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-            self.cache_path.write_text(json.dumps(self._cache, indent=2), encoding="utf-8")
+            atomic_write_json(self.cache_path, self._cache)
         except Exception:
             pass
 
@@ -755,9 +784,8 @@ class RepoIndexer:
         print(f"Loaded {len(self.cache)} cached entries")
 
     def _save_cache(self) -> None:
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
         data = {k: asdict(v) for k, v in self.cache.items()}
-        self.cache_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write_json(self.cache_path, data)
 
     @timed("llm_extraction")
     def _extract_with_llm(self, readme_content: str, folder_path: str) -> dict:
@@ -1094,9 +1122,8 @@ Examples:
     agents = indexer.index_repository(args.repo, limit=(args.limit or None))
     agents.sort(key=lambda a: (a.category, a.name.lower()))
 
-    # Save output
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps([asdict(a) for a in agents], indent=2, ensure_ascii=False), encoding="utf-8")
+    # Save output using atomic write
+    atomic_write_json(args.output, [asdict(a) for a in agents])
 
     # Cleanup HTTP cache
     _http_cache.cleanup()

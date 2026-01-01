@@ -472,10 +472,65 @@ def extract_json_object(text: str) -> dict:
 
     raise AISelectorError("Unterminated JSON object in response")
 
+def normalize_query_for_cache(query: str) -> str:
+    """
+    Normalize query text for semantic caching.
+
+    This allows similar queries to share cache entries:
+    - "best coding agent" -> "coding agent"
+    - "top coding assistant" -> "coding assistant"
+    - "show me rag examples" -> "rag example"
+
+    Args:
+        query: User query text
+
+    Returns:
+        Normalized query string
+    """
+    import re
+
+    # Convert to lowercase
+    normalized = query.lower().strip()
+
+    # Remove common query modifiers that don't change intent
+    modifiers = [
+        r'\b(best|top|good|great|excellent|recommended)\b',
+        r'\b(show me|find|get|give me|i need|i want)\b',
+        r'\b(please|thanks|thank you)\b',
+        r'\b(a|an|the)\b',
+    ]
+    for pattern in modifiers:
+        normalized = re.sub(pattern, ' ', normalized)
+
+    # Normalize whitespace
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+
+    # Pluralization normalization (simple heuristic)
+    normalized = re.sub(r'\b(\w+)s\b', r'\1', normalized)
+
+    return normalized
+
+
 def make_cache_key(*, model: str, query: str, candidate_ids: Iterable[str]) -> str:
-    """Generate cache key for AI selector requests."""
+    """
+    Generate cache key for AI selector requests.
+
+    Uses semantic normalization to allow similar queries to share cache:
+    - "best coding agent" and "top coding assistant" may share cache
+    - Query normalization removes filler words and modifiers
+    - Candidate IDs are included to ensure different search results get different cache
+
+    Args:
+        model: LLM model identifier
+        query: User query text
+        candidate_ids: List of agent IDs being considered
+
+    Returns:
+        SHA256 hash as cache key
+    """
+    normalized_query = normalize_query_for_cache(query)
     joined = ",".join([c for c in candidate_ids if c])
-    return _sha256(f"{model}\n{query}\n{joined}")
+    return _sha256(f"{model}\n{normalized_query}\n{joined}")
 
 
 # CacheEntry is re-exported from src.cache for backward compatibility

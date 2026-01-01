@@ -3,6 +3,12 @@ Agent Navigator - Data Store
 ============================
 Thin, Streamlit-free loader/cacher for `data/agents.json`.
 
+Supports two search backends:
+- BM25 (in-memory): Fast, works for <5k agents
+- SQLite FTS5: Scalable, works for 100k+ agents
+
+Set SEARCH_ENGINE=sqlite in environment to use SQLite backend.
+
 Used by:
 - FastAPI backend
 - Streamlit UI (optionally, in future refactors)
@@ -11,13 +17,33 @@ Used by:
 from __future__ import annotations
 
 import json
+import logging
+import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from src.config import settings
 from src.search import AgentSearch
+
+logger = logging.getLogger(__name__)
+
+# Lazy import SQLite search (only if needed)
+_SQLiteAgentSearch = None
+
+
+def _get_sqlite_search_class():
+    """Lazy import SQLite search engine."""
+    global _SQLiteAgentSearch
+    if _SQLiteAgentSearch is None:
+        try:
+            from src.search_sqlite import SQLiteAgentSearch
+            _SQLiteAgentSearch = SQLiteAgentSearch
+        except ImportError as e:
+            logger.error(f"Failed to import SQLiteAgentSearch: {e}")
+            raise
+    return _SQLiteAgentSearch
 
 
 @dataclass
@@ -28,7 +54,7 @@ class AgentsSnapshot:
 
 _lock = threading.Lock()
 _snapshot: Optional[AgentsSnapshot] = None
-_search_engine: Optional[AgentSearch] = None
+_search_engine: Optional[Union[AgentSearch, any]] = None
 
 
 def _read_agents_file(path: Path) -> list[dict]:
@@ -61,21 +87,84 @@ def load_agents(*, path: Optional[Path] = None) -> AgentsSnapshot:
         return _snapshot
 
 
-def get_search_engine(*, snapshot: Optional[AgentsSnapshot] = None) -> AgentSearch:
+def get_search_engine(*, snapshot: Optional[AgentsSnapshot] = None) -> Union[AgentSearch, any]:
     """
-    Get a cached AgentSearch instance for the current agents snapshot.
+    Get a cached search engine instance for the current agents snapshot.
+
+    Returns AgentSearch (BM25), SQLiteAgentSearch (FTS5), or HybridSearch
+    depending on environment variables:
+    - SEARCH_ENGINE=sqlite: Use SQLite FTS5
+    - HYBRID_SEARCH=true: Wrap in HybridSearch for vector similarity
+    - Default: BM25 in-memory
+
+    Args:
+        snapshot: Optional agents snapshot to use
+
+    Returns:
+        Search engine instance
     """
     snap = snapshot or load_agents()
+    use_sqlite = os.environ.get("SEARCH_ENGINE", "").lower() == "sqlite"
+    use_hybrid = os.environ.get("HYBRID_SEARCH", "").lower() in ("true", "1", "yes")
 
     global _search_engine, _snapshot
     with _lock:
-        # If the snapshot changed, rebuild the search engine.
+        # If the snapshot changed or search backend changed, rebuild the search engine
         if _snapshot is None or _snapshot.mtime_ns != snap.mtime_ns:
             _snapshot = snap
             _search_engine = None
 
         if _search_engine is None:
-            _search_engine = AgentSearch(snap.agents)
+            # Step 1: Create base search engine (BM25 or SQLite)
+            if use_sqlite:
+                logger.info("Using SQLite FTS5 search engine")
+                SQLiteSearch = _get_sqlite_search_class()
+                db_path = settings.data_path.parent / "agents.db"
+
+                # Check if database needs reindexing
+                needs_reindex = True
+                if db_path.exists():
+                    try:
+                        db_mtime = db_path.stat().st_mtime_ns
+                        json_mtime = snap.mtime_ns
+                        needs_reindex = json_mtime > db_mtime
+                    except OSError:
+                        needs_reindex = True
+
+                base_engine = SQLiteSearch(db_path=db_path)
+
+                # Reindex if JSON is newer than DB
+                if needs_reindex:
+                    logger.info(f"Reindexing {len(snap.agents)} agents into SQLite")
+                    base_engine.index_agents(snap.agents)
+                else:
+                    logger.info("Using existing SQLite index")
+            else:
+                logger.info("Using BM25 in-memory search engine")
+                base_engine = AgentSearch(snap.agents)
+
+            # Step 2: Wrap with HybridSearch if enabled
+            if use_hybrid:
+                logger.info("Enabling hybrid search (BM25 + embeddings)")
+                try:
+                    from src.search_hybrid import HybridSearch
+
+                    openai_key = os.environ.get("OPENAI_API_KEY")
+                    if not openai_key:
+                        logger.warning("HYBRID_SEARCH=true but OPENAI_API_KEY not set, falling back to keyword search")
+                        _search_engine = base_engine
+                    else:
+                        _search_engine = HybridSearch(
+                            base_search_engine=base_engine,
+                            api_key=openai_key,
+                            enable_embeddings=True,
+                        )
+                except ImportError as e:
+                    logger.error(f"Failed to import HybridSearch: {e}")
+                    logger.warning("Falling back to keyword search only")
+                    _search_engine = base_engine
+            else:
+                _search_engine = base_engine
 
         return _search_engine
 
