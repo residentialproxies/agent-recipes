@@ -24,10 +24,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
+          cache-dependency-path: nextjs-app/package-lock.json
 
-      - name: Deploy static landing page to Cloudflare Pages
+      - name: Install dependencies
+        working-directory: nextjs-app
+        run: npm ci
+
+      - name: Build Next.js
+        working-directory: nextjs-app
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.API_BASE_URL }}
+        run: npm run build
+
+      - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy static-landing --project-name=agent-recipes
+          command: pages deploy nextjs-app/out --project-name=agent-recipes
