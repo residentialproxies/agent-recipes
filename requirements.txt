@@ -1,0 +1,18 @@
+# Agent Navigator - Dependencies
+# Python 3.11+ required
+
+# Core UI framework
+streamlit>=1.32.0,<2.0.0
+
+# BM25 search engine
+rank-bm25>=0.2.2,<1.0.0
+
+# LLM API client (for indexer and AI selector)
+anthropic>=0.18.0,<1.0.0
+
+# Progress bars for indexer
+tqdm>=4.65.0,<5.0.0
+
+# API backend (for Next.js frontend)
+fastapi>=0.110.0,<1.0.0
+uvicorn[standard]>=0.27.0,<1.0.0

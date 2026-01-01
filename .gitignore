@@ -1,0 +1,34 @@
+.venv/
+__pycache__/
+.pycache/
+.pytest_cache/
+tmp/
+site/
+.DS_Store
+.streamlit/secrets.toml
+nextjs-frontend/node_modules/
+nextjs-frontend/.next/
+nextjs-frontend/.npm-cache/
+
+# Cloudflare secrets
+wrangler.toml
+.dev.vars
+.wrangler/
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Coverage and test reports
+.coverage
+.coverage.*
+htmlcov/
+
+# Database files
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Site exports
+site-test/

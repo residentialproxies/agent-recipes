@@ -1,0 +1,53 @@
+name: Update Agent Index
+
+on:
+  schedule:
+    # Run every Sunday at midnight UTC
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+    # Allow manual trigger
+
+jobs:
+  update-index:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout agent-navigator
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout awesome-llm-apps
+        uses: actions/checkout@v4
+        with:
+          repository: Shubhamsaboo/awesome-llm-apps
+          path: awesome-llm-apps
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run indexer
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python src/indexer.py --repo awesome-llm-apps --output data/agents.json --fetch-stars
+
+      - name: Check for changes
+        id: git-check
+        run: |
+          git diff --exit-code data/agents.json || echo "changes=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push
+        if: steps.git-check.outputs.changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/agents.json data/.indexer_cache.json
+          git commit -m "Update agent index $(date +%Y-%m-%d)"
+          git push

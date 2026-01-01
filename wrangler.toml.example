@@ -1,0 +1,30 @@
+# Cloudflare Pages Configuration Template
+# Copy this to wrangler.toml and set CLOUDFLARE_ACCOUNT_ID environment variable
+# NEVER commit wrangler.toml - it contains sensitive account information
+
+name = "agent-recipes"
+pages_build_output_dir = "nextjs-frontend/.next"
+compatibility_date = "2024-01-01"
+
+[env.production]
+name = "agent-recipes"
+routes = [
+  { pattern = "agent-recipes.pages.dev", zone_name = "pages.dev" }
+]
+
+[env.production.vars]
+# API backend URL - update this with your backend deployment URL
+API_BASE_URL = "https://your-backend-url.com"
+
+# Build configuration
+[build]
+command = "cd nextjs-frontend && npm ci && npm run build"
+cwd = "."
+
+[build.upload]
+format = "service-worker"
+
+# Environment variables (non-sensitive)
+# Sensitive variables should be set via:
+# wrangler pages secret put <KEY>
+# or via Cloudflare Dashboard > Pages > Settings > Environment variables
