@@ -1,7 +1,7 @@
 import AgentDetail from "./agent-detail";
 
 export function generateStaticParams() {
-  return [];
+  return [{ id: "_" }];
 }
 
 interface PageProps {
