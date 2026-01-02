@@ -9,14 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
-import type { Agent, FiltersResponse } from "@/types/agent";
+import type { Agent, AgentFiltersResponse } from "@/types/agent";
 
 export default function AgentsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [filters, setFilters] = useState<FiltersResponse | null>(null);
+  const [filters, setFilters] = useState<AgentFiltersResponse | null>(null);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
 
