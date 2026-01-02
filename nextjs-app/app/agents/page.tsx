@@ -1,88 +1,97 @@
-import type { Metadata } from "next";
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { getAgents, getFilters } from "@/lib/api";
 import { AgentGrid } from "@/components/agent-grid";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Loader2 } from "lucide-react";
+import type { Agent, FiltersResponse } from "@/types/agent";
 
-// ISR: Revalidate every hour (frequently updated content)
-export const revalidate = 3600;
+export default function AgentsPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
-export const metadata: Metadata = {
-  title: "Explore Agents | Agent Navigator",
-  description:
-    "Browse and search 100+ LLM agent examples. Filter by category, framework, provider, and complexity.",
-  alternates: { canonical: "/agents" },
-  openGraph: {
-    title: "Explore Agents | Agent Navigator",
-    description:
-      "Browse and search LLM agent examples. Filter by category, framework, provider, and complexity.",
-    type: "website",
-    url: "/agents",
-  },
-};
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [filters, setFilters] = useState<FiltersResponse | null>(null);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-type SearchParams = Record<string, string | string[] | undefined>;
-
-function first(value: string | string[] | undefined): string | undefined {
-  if (Array.isArray(value)) return value[0];
-  return value;
-}
-
-function buildQuery(params: Record<string, string | undefined>): string {
-  const sp = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (!v) return;
-    sp.set(k, v);
-  });
-  const qs = sp.toString();
-  return qs ? `?${qs}` : "";
-}
-
-export default async function AgentsPage({
-  searchParams,
-}: {
-  searchParams?: SearchParams;
-}) {
-  const sp = searchParams || {};
-  const q = first(sp.q) || "";
-  const category = first(sp.category) || "";
-  const framework = first(sp.framework) || "";
-  const provider = first(sp.provider) || "";
-  const complexity = first(sp.complexity) || "";
-  const localOnly = first(sp.local_only) === "true";
-
-  const page = Math.max(1, Number.parseInt(first(sp.page) || "1", 10));
+  const q = searchParams.get("q") || "";
+  const category = searchParams.get("category") || "";
+  const framework = searchParams.get("framework") || "";
+  const provider = searchParams.get("provider") || "";
+  const complexity = searchParams.get("complexity") || "";
+  const localOnly = searchParams.get("local_only") === "true";
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
   const pageSize = Math.min(
     48,
-    Math.max(6, Number.parseInt(first(sp.page_size) || "24", 10)),
+    Math.max(6, parseInt(searchParams.get("page_size") || "24", 10)),
   );
 
-  const [filters, results] = await Promise.all([
-    getFilters().catch(() => null),
-    getAgents({
-      q,
-      category: category || undefined,
-      framework: framework || undefined,
-      provider: provider || undefined,
-      complexity: complexity || undefined,
-      local_only: localOnly,
-      page,
-      page_size: pageSize,
-      sort: q ? undefined : "-stars",
-    }).catch(() => ({
-      query: q,
-      total: 0,
-      page,
-      page_size: pageSize,
-      items: [],
-    })),
-  ]);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  const totalPages = Math.max(1, Math.ceil(results.total / results.page_size));
-  const prevPage = page > 1 ? page - 1 : null;
-  const nextPage = page < totalPages ? page + 1 : null;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [filtersData, agentsData] = await Promise.all([
+        getFilters().catch(() => null),
+        getAgents({
+          q: q || undefined,
+          category: category || undefined,
+          framework: framework || undefined,
+          provider: provider || undefined,
+          complexity: complexity || undefined,
+          local_only: localOnly,
+          page,
+          page_size: pageSize,
+          sort: q ? undefined : "-stars",
+        }).catch(() => ({
+          items: [],
+          total: 0,
+          page,
+          page_size: pageSize,
+          query: q,
+        })),
+      ]);
+      setFilters(filtersData);
+      setAgents(agentsData.items);
+      setTotal(agentsData.total);
+    } finally {
+      setLoading(false);
+    }
+  }, [q, category, framework, provider, complexity, localOnly, page, pageSize]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const buildUrl = (params: Record<string, string | undefined>) => {
+    const sp = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v) sp.set(k, v);
+    });
+    const qs = sp.toString();
+    return qs ? `/agents?${qs}` : "/agents";
+  };
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const params: Record<string, string | undefined> = {
+      q: (formData.get("q") as string) || undefined,
+      category: (formData.get("category") as string) || undefined,
+      framework: (formData.get("framework") as string) || undefined,
+      provider: (formData.get("provider") as string) || undefined,
+      complexity: (formData.get("complexity") as string) || undefined,
+      local_only: formData.get("local_only") ? "true" : undefined,
+      page_size: String(pageSize),
+    };
+    router.push(buildUrl(params));
+  };
 
   const baseParams = {
     q: q || undefined,
@@ -91,7 +100,7 @@ export default async function AgentsPage({
     provider: provider || undefined,
     complexity: complexity || undefined,
     local_only: localOnly ? "true" : undefined,
-    page_size: String(results.page_size),
+    page_size: String(pageSize),
   };
 
   return (
@@ -103,7 +112,7 @@ export default async function AgentsPage({
               Explore Agents
             </h1>
             <p className="text-muted-foreground">
-              Search and filter across {results.total} agents
+              Search and filter across {total} agents
             </p>
           </div>
           <Button asChild variant="outline">
@@ -117,8 +126,7 @@ export default async function AgentsPage({
           </CardHeader>
           <CardContent>
             <form
-              action="/agents"
-              method="get"
+              onSubmit={handleSubmit}
               className="grid gap-3 md:grid-cols-12"
             >
               <div className="md:col-span-5">
@@ -217,35 +225,39 @@ export default async function AgentsPage({
           </CardContent>
         </Card>
 
-        <AgentGrid agents={results.items} />
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <AgentGrid agents={agents} />
+        )}
 
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
-            Page {results.page} of {totalPages}
+            Page {page} of {totalPages}
           </div>
           <div className="flex gap-2">
-            <Button asChild variant="outline" disabled={!prevPage}>
+            <Button asChild variant="outline" disabled={page <= 1}>
               <Link
-                aria-disabled={!prevPage}
-                tabIndex={!prevPage ? -1 : 0}
                 href={
-                  prevPage
-                    ? `/agents${buildQuery({ ...baseParams, page: String(prevPage) })}`
+                  page > 1
+                    ? buildUrl({ ...baseParams, page: String(page - 1) })
                     : "#"
                 }
+                aria-disabled={page <= 1}
               >
                 ← Prev
               </Link>
             </Button>
-            <Button asChild variant="outline" disabled={!nextPage}>
+            <Button asChild variant="outline" disabled={page >= totalPages}>
               <Link
-                aria-disabled={!nextPage}
-                tabIndex={!nextPage ? -1 : 0}
                 href={
-                  nextPage
-                    ? `/agents${buildQuery({ ...baseParams, page: String(nextPage) })}`
+                  page < totalPages
+                    ? buildUrl({ ...baseParams, page: String(page + 1) })
                     : "#"
                 }
+                aria-disabled={page >= totalPages}
               >
                 Next →
               </Link>
