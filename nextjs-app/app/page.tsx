@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { HeroSection } from "@/components/hero-section";
 import { AIConciergeCTA } from "@/components/ai-concierge";
 import { AgentGrid } from "@/components/agent-grid";
@@ -7,6 +8,14 @@ import Link from "next/link";
 
 // ISR: Revalidate every hour (home page with trending content)
 export const revalidate = 3600;
+
+export function generateMetadata(): Metadata {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  const canonical = siteUrl ? new URL("/", siteUrl).toString() : undefined;
+  return {
+    alternates: canonical ? { canonical } : undefined,
+  };
+}
 
 export default async function HomePage() {
   // Fetch trending agents (latest 12)

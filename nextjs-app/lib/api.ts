@@ -6,7 +6,9 @@ import type {
 } from "@/types/agent";
 
 const SERVER_API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  process.env.API_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:8000";
 const CLIENT_API_BASE_PATH = "/api";
 
 function apiBaseUrl(): string {

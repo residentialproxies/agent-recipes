@@ -1,8 +1,4 @@
-"use client";
-
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getAgent } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,48 +10,32 @@ import {
   Calendar,
   Code2,
   Cpu,
-  Loader2,
 } from "lucide-react";
 import { getCategoryColor, getComplexityBadge, formatDate } from "@/lib/utils";
 import type { Agent } from "@/types/agent";
 
-export default function AgentDetail({ id }: { id: string }) {
-  const [agent, setAgent] = useState<Agent | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function githubReadmeUrl(agent: Agent): string | null {
+  const repoUrl = agent.github_url || "";
+  const rel = agent.readme_relpath || "";
+  if (!repoUrl || !rel) return null;
 
-  useEffect(() => {
-    getAgent(id)
-      .then(setAgent)
-      .catch(() => setError("Agent not found"))
-      .finally(() => setLoading(false));
-  }, [id]);
-
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </main>
-    );
+  const tree = repoUrl.match(
+    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\//,
+  );
+  if (tree) {
+    const [, owner, repo, branch] = tree;
+    return `https://github.com/${owner}/${repo}/blob/${branch}/${rel}`;
   }
 
-  if (error || !agent) {
-    return (
-      <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-        <div className="container mx-auto px-4 py-8">
-          <Button asChild variant="ghost" className="mb-6">
-            <Link href="/agents">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Agents
-            </Link>
-          </Button>
-          <h1 className="text-2xl font-bold">Agent not found</h1>
-        </div>
-      </main>
-    );
-  }
+  const root = repoUrl.match(/^https:\/\/github\.com\/[^/]+\/[^/]+/);
+  if (root) return `${root[0]}/blob/main/${rel}`;
 
+  return null;
+}
+
+export default function AgentDetail({ agent }: { agent: Agent }) {
   const complexityBadge = getComplexityBadge(agent.complexity);
+  const readmeUrl = githubReadmeUrl(agent);
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
@@ -68,9 +48,7 @@ export default function AgentDetail({ id }: { id: string }) {
         </Button>
 
         <div className="mb-8">
-          <div
-            className={`mb-4 h-1 w-20 ${getCategoryColor(agent.category)}`}
-          />
+          <div className={`mb-4 h-1 w-20 ${getCategoryColor(agent.category)}`} />
           <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="mb-2 text-4xl font-bold">{agent.name}</h1>
@@ -80,11 +58,7 @@ export default function AgentDetail({ id }: { id: string }) {
             </div>
             <div className="flex gap-2">
               <Button asChild>
-                <a
-                  href={agent.github_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
+                <a href={agent.github_url} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="mr-2 h-4 w-4" />
                   View on GitHub
                 </a>
@@ -109,8 +83,7 @@ export default function AgentDetail({ id }: { id: string }) {
             )}
             <Badge variant="outline">
               <Calendar className="mr-1 h-3 w-3" />
-              Updated{" "}
-              {agent.updated_at ? formatDate(agent.updated_at) : "Unknown"}
+              Updated {agent.updated_at ? formatDate(agent.updated_at) : "Unknown"}
             </Badge>
           </div>
         </div>
@@ -243,63 +216,31 @@ export default function AgentDetail({ id }: { id: string }) {
                 <CardTitle>Quick Links</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Button
-                  asChild
-                  variant="outline"
-                  className="w-full justify-start"
-                >
-                  <a
-                    href={agent.github_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
+                <Button asChild variant="outline" className="w-full justify-start">
+                  <a href={agent.github_url} target="_blank" rel="noopener noreferrer">
                     <GitFork className="mr-2 h-4 w-4" />
                     View Source Code
                   </a>
                 </Button>
                 {agent.codespaces_url && (
-                  <Button
-                    asChild
-                    variant="outline"
-                    className="w-full justify-start"
-                  >
-                    <a
-                      href={agent.codespaces_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
+                  <Button asChild variant="outline" className="w-full justify-start">
+                    <a href={agent.codespaces_url} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="mr-2 h-4 w-4" />
                       Open in Codespaces
                     </a>
                   </Button>
                 )}
                 {agent.colab_url && (
-                  <Button
-                    asChild
-                    variant="outline"
-                    className="w-full justify-start"
-                  >
-                    <a
-                      href={agent.colab_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
+                  <Button asChild variant="outline" className="w-full justify-start">
+                    <a href={agent.colab_url} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="mr-2 h-4 w-4" />
                       Open in Colab
                     </a>
                   </Button>
                 )}
-                {agent.readme_relpath && (
-                  <Button
-                    asChild
-                    variant="outline"
-                    className="w-full justify-start"
-                  >
-                    <a
-                      href={`${agent.github_url}/blob/main/${agent.readme_relpath}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
+                {readmeUrl && (
+                  <Button asChild variant="outline" className="w-full justify-start">
+                    <a href={readmeUrl} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="mr-2 h-4 w-4" />
                       View README
                     </a>
@@ -313,3 +254,4 @@ export default function AgentDetail({ id }: { id: string }) {
     </main>
   );
 }
+

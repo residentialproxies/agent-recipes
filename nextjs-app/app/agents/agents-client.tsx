@@ -1,25 +1,36 @@
-import type { Metadata } from "next";
+"use client";
+
+import { useMemo } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getAgents, getFilters } from "@/lib/api";
+
 import { AgentGrid } from "@/components/agent-grid";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Agent, AgentFiltersResponse } from "@/types/agent";
-import AgentsClient from "./agents-client";
-import { computeFiltersFromAgents, loadRepoAgents } from "@/lib/repo-agents";
 
-type SearchParams = Record<string, string | string[] | undefined>;
-
-function first(value: string | string[] | undefined): string {
-  if (!value) return "";
-  return Array.isArray(value) ? value[0] || "" : value;
-}
-
-function toInt(value: string, fallback: number): number {
+function clampInt(value: string, fallback: number, min: number, max: number): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
-  return Math.floor(n);
+  const i = Math.floor(n);
+  return Math.min(max, Math.max(min, i));
+}
+
+function haystack(a: Agent): string {
+  return [
+    a.name,
+    a.description,
+    a.tagline,
+    a.category,
+    ...(a.frameworks || []),
+    ...(a.llm_providers || []),
+    ...(a.tags || []),
+    ...(a.languages || []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 }
 
 function buildUrl(params: Record<string, string | undefined>) {
@@ -31,67 +42,56 @@ function buildUrl(params: Record<string, string | undefined>) {
   return qs ? `/agents?${qs}` : "/agents";
 }
 
-// SSR/ISR: Revalidate agents listing every hour.
-export const revalidate = 3600;
-
-export function generateMetadata(): Metadata {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-  const canonical = siteUrl ? new URL("/agents/", siteUrl).toString() : undefined;
-  return {
-    alternates: canonical ? { canonical } : undefined,
-    robots: { index: true, follow: true },
-  };
-}
-
-export default async function AgentsPage({
-  searchParams,
+export default function AgentsClient({
+  allAgents,
+  filters,
 }: {
-  searchParams?: SearchParams;
+  allAgents: Agent[];
+  filters: AgentFiltersResponse;
 }) {
-  const isStaticExport = (process.env.NEXT_OUTPUT || "").toLowerCase() === "export";
-  if (isStaticExport) {
-    const allAgents = await loadRepoAgents().catch(() => [] as Agent[]);
-    const filters = computeFiltersFromAgents(allAgents);
-    return <AgentsClient allAgents={allAgents} filters={filters} />;
-  }
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
-  const q = first(searchParams?.q);
-  const category = first(searchParams?.category);
-  const framework = first(searchParams?.framework);
-  const provider = first(searchParams?.provider);
-  const complexity = first(searchParams?.complexity);
-  const localOnly = first(searchParams?.local_only) === "true";
-  const page = Math.max(1, toInt(first(searchParams?.page) || "1", 1));
-  const pageSize = Math.min(
-    48,
-    Math.max(6, toInt(first(searchParams?.page_size) || "24", 24)),
-  );
+  const q = searchParams.get("q") || "";
+  const category = searchParams.get("category") || "";
+  const framework = searchParams.get("framework") || "";
+  const provider = searchParams.get("provider") || "";
+  const complexity = searchParams.get("complexity") || "";
+  const localOnly = searchParams.get("local_only") === "true";
+  const page = clampInt(searchParams.get("page") || "1", 1, 1, 10000);
+  const pageSize = clampInt(searchParams.get("page_size") || "24", 24, 6, 48);
 
-  const [filtersData, agentsData] = await Promise.all([
-    getFilters().catch(() => null),
-    getAgents({
-      q: q || undefined,
-      category: category || undefined,
-      framework: framework || undefined,
-      provider: provider || undefined,
-      complexity: complexity || undefined,
-      local_only: localOnly,
-      page,
-      page_size: pageSize,
-      sort: q ? undefined : "-stars",
-    }).catch(() => ({
-      items: [] as Agent[],
-      total: 0,
-      page,
-      page_size: pageSize,
-      query: q,
-    })),
-  ]);
+  const { items, total } = useMemo(() => {
+    const qNorm = q.trim().toLowerCase();
+    const out: Agent[] = [];
 
-  const filters: AgentFiltersResponse | null = filtersData;
-  const agents = agentsData.items || [];
-  const total = agentsData.total || 0;
+    for (const a of allAgents) {
+      if (category && a.category !== category) continue;
+      if (framework && !(a.frameworks || []).includes(framework)) continue;
+      if (provider && !(a.llm_providers || []).includes(provider)) continue;
+      if (complexity && a.complexity !== complexity) continue;
+      if (localOnly && !a.supports_local_models) continue;
+
+      if (qNorm) {
+        if (!haystack(a).includes(qNorm)) continue;
+      }
+
+      out.push(a);
+    }
+
+    if (!qNorm) {
+      out.sort((a, b) => (Number(b.stars || 0) - Number(a.stars || 0)));
+    } else {
+      out.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    return { items: out, total: out.length };
+  }, [allAgents, q, category, framework, provider, complexity, localOnly]);
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * pageSize;
+  const pageItems = items.slice(start, start + pageSize);
 
   const baseParams: Record<string, string | undefined> = {
     q: q || undefined,
@@ -102,6 +102,22 @@ export default async function AgentsPage({
     local_only: localOnly ? "true" : undefined,
     page_size: String(pageSize),
   };
+
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const params: Record<string, string | undefined> = {
+      q: (formData.get("q") as string) || undefined,
+      category: (formData.get("category") as string) || undefined,
+      framework: (formData.get("framework") as string) || undefined,
+      provider: (formData.get("provider") as string) || undefined,
+      complexity: (formData.get("complexity") as string) || undefined,
+      local_only: formData.get("local_only") ? "true" : undefined,
+      page_size: String(pageSize),
+      page: "1",
+    };
+    router.push(buildUrl(params));
+  }
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
@@ -123,10 +139,7 @@ export default async function AgentsPage({
             <CardTitle className="text-lg">Search & Filters</CardTitle>
           </CardHeader>
           <CardContent>
-            <form action="/agents" method="get" className="grid gap-3 md:grid-cols-12">
-              <input type="hidden" name="page" value="1" />
-              <input type="hidden" name="page_size" value={String(pageSize)} />
-
+            <form onSubmit={onSubmit} className="grid gap-3 md:grid-cols-12">
               <div className="md:col-span-5">
                 <Input
                   name="q"
@@ -142,7 +155,7 @@ export default async function AgentsPage({
                   className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">All categories</option>
-                  {(filters?.categories || []).map((c) => (
+                  {(filters.categories || []).map((c) => (
                     <option key={c} value={c}>
                       {c}
                     </option>
@@ -157,7 +170,7 @@ export default async function AgentsPage({
                   className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">All frameworks</option>
-                  {(filters?.frameworks || []).map((f) => (
+                  {(filters.frameworks || []).map((f) => (
                     <option key={f} value={f}>
                       {f}
                     </option>
@@ -172,7 +185,7 @@ export default async function AgentsPage({
                   className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">All providers</option>
-                  {(filters?.providers || []).map((p) => (
+                  {(filters.providers || []).map((p) => (
                     <option key={p} value={p}>
                       {p}
                     </option>
@@ -187,7 +200,7 @@ export default async function AgentsPage({
                   className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">Any</option>
-                  {(filters?.complexities || ["beginner", "intermediate", "advanced"]).map((c) => (
+                  {(filters.complexities || ["beginner", "intermediate", "advanced"]).map((c) => (
                     <option key={c} value={String(c)}>
                       {String(c)}
                     </option>
@@ -217,33 +230,33 @@ export default async function AgentsPage({
           </CardContent>
         </Card>
 
-        <AgentGrid agents={agents} />
+        <AgentGrid agents={pageItems} />
 
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
-            Page {page} of {totalPages}
+            Page {safePage} of {totalPages}
           </div>
           <div className="flex gap-2">
-            <Button asChild variant="outline" disabled={page <= 1}>
+            <Button asChild variant="outline" disabled={safePage <= 1}>
               <Link
                 href={
-                  page > 1
-                    ? buildUrl({ ...baseParams, page: String(page - 1) })
+                  safePage > 1
+                    ? buildUrl({ ...baseParams, page: String(safePage - 1) })
                     : "#"
                 }
-                aria-disabled={page <= 1}
+                aria-disabled={safePage <= 1}
               >
                 ← Prev
               </Link>
             </Button>
-            <Button asChild variant="outline" disabled={page >= totalPages}>
+            <Button asChild variant="outline" disabled={safePage >= totalPages}>
               <Link
                 href={
-                  page < totalPages
-                    ? buildUrl({ ...baseParams, page: String(page + 1) })
+                  safePage < totalPages
+                    ? buildUrl({ ...baseParams, page: String(safePage + 1) })
                     : "#"
                 }
-                aria-disabled={page >= totalPages}
+                aria-disabled={safePage >= totalPages}
               >
                 Next →
               </Link>
@@ -254,3 +267,4 @@ export default async function AgentsPage({
     </main>
   );
 }
+
