@@ -1,9 +1,59 @@
 # Deployment Guide
 
-This project uses a split deployment architecture:
+This project supports two deployment styles:
 
-- **Frontend**: Cloudflare Pages (Next.js SSR/SSG + CDN)
-- **Backend**: Railway/Render/Fly.io (FastAPI)
+- **VPS (one-click / repeatable)**: Docker Compose + `nginx-proxy` (recommended if you control a server)
+- **Split hosting**: Cloudflare Pages (frontend) + managed backend (Railway/Render/Fly.io)
+
+## VPS Deployment (One-Click)
+
+### Requirements (VPS)
+
+- Docker + Docker Compose
+- An existing `nginx-proxy` + `letsencrypt-nginx-proxy-companion` setup
+- The external network used by the proxy (default: `nginx-proxy_default`)
+
+### Configure secrets on the VPS (once)
+
+Create `$(VPS_PATH)/.env.production` (gitignored) with at least:
+
+```bash
+ANTHROPIC_API_KEY=...
+GITHUB_TOKEN=...
+AI_DAILY_BUDGET_USD=5.0
+
+# CORS allowlist must match your frontend origins
+CORS_ALLOW_ORIGINS=https://agentrecipes.com,https://www.agentrecipes.com
+
+# nginx-proxy integration
+PROXY_NETWORK_NAME=nginx-proxy_default
+FRONTEND_VIRTUAL_HOST=agentrecipes.com,www.agentrecipes.com
+API_VIRTUAL_HOST=api.agentrecipes.com
+LETSENCRYPT_EMAIL=admin@example.com
+```
+
+### Deploy from your laptop (repeatable)
+
+```bash
+make deploy \
+  VPS_SSH=root@107.174.42.198 \
+  VPS_PATH=/opt/docker-projects/heavy-tasks/agent-recipes \
+  PROD_SITE_URL=https://agentrecipes.com \
+  PROD_API_URL=https://api.agentrecipes.com
+```
+
+Or:
+
+```bash
+VPS_SSH=root@107.174.42.198 VPS_PATH=/opt/docker-projects/heavy-tasks/agent-recipes ./scripts/deploy-vps.sh
+```
+
+This will:
+
+- Build the Next.js static export with `NEXT_PUBLIC_SITE_URL` (canonical + sitemap)
+- `rsync` backend code + `docker-compose.prod.yml` to the VPS
+- `rsync` `nextjs-app/out/` to `frontend-dist/`
+- Run `scripts/vps/release.sh` (Compose up + health waits)
 
 ## Prerequisites
 
@@ -40,6 +90,7 @@ Add the following secrets:
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID     | `your-cloudflare-account-id`       |
 | `CLOUDFLARE_API_TOKEN`  | Cloudflare API token      | `your-cloudflare-api-token`        |
 | `API_BASE_URL`          | Backend API URL           | `https://your-backend.railway.app` |
+| `SITE_URL`              | Frontend canonical URL    | `https://agent-recipes.pages.dev`  |
 | `ANTHROPIC_API_KEY`     | Claude API key (optional) | `sk-ant-...`                       |
 
 ## Frontend Deployment (Cloudflare Pages)
@@ -59,17 +110,18 @@ npm install -g wrangler
 # Login to Cloudflare
 wrangler login
 
-# Deploy
-cd nextjs-frontend
-npm install
-npm run build
-wrangler pages deploy .next --project-name=agent-recipes
+# Build static export
+cd nextjs-app
+npm ci
+NEXT_OUTPUT=export NEXT_PUBLIC_SITE_URL=https://agent-recipes.pages.dev NEXT_PUBLIC_API_URL=https://your-backend.example.com npm run build
+
+# Deploy static export output
+wrangler pages deploy out --project-name=agent-recipes
 ```
 
 ## Backend Deployment
 
-Backend should be deployed to a separate service (Railway/Render/Fly.io) as documented in:
-`/Volumes/SSD/skills/server-ops/vps/107.174.42.198/heavy-tasks/SYNC.md`
+For split hosting, deploy the FastAPI backend to a managed service (Railway/Render/Fly.io).
 
 ### Environment Variables for Backend
 
@@ -78,13 +130,13 @@ ANTHROPIC_API_KEY=sk-ant-...
 GITHUB_TOKEN=ghp_...
 AI_DAILY_BUDGET_USD=5.0
 INDEXER_WORKERS=20
-CORS_ALLOW_ORIGINS=https://agent-recipes.pages.dev
+CORS_ALLOW_ORIGINS=https://agent-recipes.pages.dev,https://agentrecipes.com,https://www.agentrecipes.com
 ```
 
 ## Deployment URLs
 
-- **Frontend**: https://agent-recipes.pages.dev
-- **Backend**: Configure in `API_BASE_URL` secret
+- **Frontend**: Configure via Cloudflare Pages (example: https://agent-recipes.pages.dev)
+- **Backend**: Configure in `API_BASE_URL` secret (used as `NEXT_PUBLIC_API_URL` during the build)
 - **Custom Domain**: Configure in Cloudflare Pages settings
 
 ## Troubleshooting

@@ -1,0 +1,63 @@
+version: "3.8"
+
+services:
+  frontend:
+    image: nginx:1.27-alpine
+    container_name: agent-recipes-frontend
+    volumes:
+      - ./frontend-dist:/usr/share/nginx/html:ro
+    expose:
+      - "80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - proxy-tier
+    labels:
+      # nginx-proxy labels
+      - "com.github.nginx-proxy.enabled=true"
+      - "VIRTUAL_HOST=${FRONTEND_VIRTUAL_HOST:-agentrecipes.com,www.agentrecipes.com}"
+      - "VIRTUAL_PORT=80"
+      - "LETSENCRYPT_HOST=${FRONTEND_LETSENCRYPT_HOST:-agentrecipes.com,www.agentrecipes.com}"
+      - "LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-admin@expertbeacon.com}"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-recipes-api
+    command: uvicorn src.api:app --host 0.0.0.0 --port 8000 --workers 4
+    volumes:
+      - ./data:/app/data
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-https://agentrecipes.com,https://www.agentrecipes.com}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - AI_DAILY_BUDGET_USD=${AI_DAILY_BUDGET_USD:-5.0}
+      - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-true}
+      - TRUSTED_PROXY_IPS=${TRUSTED_PROXY_IPS:-*}
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - proxy-tier
+    labels:
+      # nginx-proxy labels
+      - "com.github.nginx-proxy.enabled=true"
+      - "VIRTUAL_HOST=${API_VIRTUAL_HOST:-api.agentrecipes.com}"
+      - "VIRTUAL_PORT=8000"
+      - "LETSENCRYPT_HOST=${API_LETSENCRYPT_HOST:-api.agentrecipes.com}"
+      - "LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-admin@expertbeacon.com}"
+
+networks:
+  proxy-tier:
+    external: true
+    name: ${PROXY_NETWORK_NAME:-nginx-proxy_default}

@@ -38,8 +38,13 @@ vercel
 vercel env add NEXT_PUBLIC_API_URL production
 # Enter: https://your-backend-url.com
 
+# Recommended for SSR: private server-side base URL (not exposed to the browser)
+vercel env add API_URL production
+# Enter: https://your-backend-url.com
+
 # Preview
 vercel env add NEXT_PUBLIC_API_URL preview
+vercel env add API_URL preview
 ```
 
 4. **Deploy Production**
@@ -55,7 +60,7 @@ vercel --prod
 ### Option 2: Cloudflare Pages
 
 **Pros**: Global CDN, free tier, DDoS protection
-**Best for**: Static sites, global performance
+**Best for**: Static export builds (no SSR)
 
 #### Steps:
 
@@ -63,7 +68,7 @@ vercel --prod
 
 ```bash
 cd nextjs-app
-npm run build
+NEXT_OUTPUT=export npm run build
 ```
 
 2. **Deploy via Wrangler**
@@ -76,7 +81,7 @@ npm i -g wrangler
 wrangler login
 
 # Deploy
-wrangler pages deploy .next/standalone --project-name agent-navigator
+wrangler pages deploy out --project-name agent-navigator
 ```
 
 3. **Set Environment Variables**
@@ -84,7 +89,9 @@ wrangler pages deploy .next/standalone --project-name agent-navigator
 - Go to Cloudflare Dashboard → Pages → agent-navigator → Settings
 - Add: `NEXT_PUBLIC_API_URL = https://your-backend.com`
 
-**Note**: Next.js standalone mode works on Cloudflare Pages, but for full compatibility consider using `@cloudflare/next-on-pages` adapter.
+**Note**:
+- Cloudflare Pages does not run Next.js SSR by default. Use `NEXT_OUTPUT=export` for static export.
+- In static export mode, Next.js rewrites are not applied; serve `/api/*` via a reverse proxy/CDN rule, or configure the frontend to call the backend origin directly.
 
 ---
 
@@ -209,6 +216,7 @@ flyctl deploy
 
 ```bash
 NEXT_PUBLIC_API_URL=https://your-backend.com
+API_URL=https://your-backend.com
 ```
 
 ### Optional

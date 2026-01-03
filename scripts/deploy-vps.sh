@@ -1,40 +1,21 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-# Deployment script for VPS (107.174.42.198)
-# This script syncs code and deploys the FastAPI backend
+# One-click deploy wrapper.
+# Prefer `make deploy`, but this script keeps the defaults in one place.
 
-VPS_HOST="107.174.42.198"
-VPS_USER="root"
-VPS_PATH="/opt/docker-projects/agent-recipes"
-LOCAL_PATH="/Volumes/SSD/dev/new/agent-recipes"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT_DIR}"
 
-echo "🚀 Deploying agent-recipes to VPS..."
+VPS_SSH="${VPS_SSH:-root@107.174.42.198}"
+VPS_PATH="${VPS_PATH:-/opt/docker-projects/heavy-tasks/agent-recipes}"
+PROD_SITE_URL="${PROD_SITE_URL:-https://agentrecipes.com}"
+PROD_API_URL="${PROD_API_URL:-https://api.agentrecipes.com}"
+NEXT_OUTPUT="${NEXT_OUTPUT:-export}"
 
-# 1. Sync code to VPS
-echo "📦 Syncing code to VPS..."
-rsync -avz --exclude 'node_modules' \
-  --exclude '.git' \
-  --exclude '.venv' \
-  --exclude '__pycache__' \
-  --exclude '*.pyc' \
-  --exclude '.pytest_cache' \
-  --exclude '.next' \
-  --exclude 'site' \
-  --exclude '.env' \
-  "${LOCAL_PATH}/" \
-  "${VPS_USER}@${VPS_HOST}:${VPS_PATH}/"
-
-echo "✅ Code synced successfully"
-
-# 2. Deploy on VPS
-echo "🐳 Deploying with Docker..."
-ssh "${VPS_USER}@${VPS_HOST}" "cd ${VPS_PATH} && \
-  docker-compose down && \
-  docker-compose pull || true && \
-  docker-compose build --no-cache && \
-  docker-compose up -d"
-
-echo "✅ Deployment complete!"
-echo "🌐 Backend should be available at: http://${VPS_HOST}:8000"
-echo "📊 Check logs with: ssh ${VPS_USER}@${VPS_HOST} 'cd ${VPS_PATH} && docker-compose logs -f'"
+make deploy \
+  VPS_SSH="${VPS_SSH}" \
+  VPS_PATH="${VPS_PATH}" \
+  PROD_SITE_URL="${PROD_SITE_URL}" \
+  PROD_API_URL="${PROD_API_URL}" \
+  NEXT_OUTPUT="${NEXT_OUTPUT}"

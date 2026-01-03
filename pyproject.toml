@@ -1,5 +1,5 @@
 # Agent Navigator - Project Configuration
-# https://packaging.python.org/en/latest/specifications/pyproject-toml/
+# Docs: packaging.python.org (pyproject.toml spec)
 
 [project]
 name = "agent-navigator"

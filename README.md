@@ -53,12 +53,28 @@ WebManus (consumer-facing) endpoints:
 Environment variables (VPS):
 
 - `ANTHROPIC_API_KEY` (required for AI endpoints)
-- `CORS_ALLOW_ORIGINS` (default `*`, or comma-separated origins)
+- `CORS_ALLOW_ORIGINS` (comma-separated allowed origins; use `*` for local/dev only)
 - `TRUST_PROXY_HEADERS` (set `true` if you run behind a reverse proxy and want to trust `X-Forwarded-For`)
 - `TRUSTED_PROXY_IPS` (comma-separated proxy IPs to trust; set to `*` to trust all proxies — not recommended)
 - `AI_DAILY_BUDGET_USD` (default `5.0`)
 - `AI_CACHE_TTL_SECONDS` (default `21600`)
 - `ANTHROPIC_INPUT_USD_PER_MILLION` / `ANTHROPIC_OUTPUT_USD_PER_MILLION` (required if you change to a non-“haiku” model)
+- `NEXT_PUBLIC_SITE_URL` (canonical base URL for sitemap/canonicals in builds)
+- `NEXT_PUBLIC_API_URL` (browser-facing API base URL)
+- `API_URL` (server-only API base URL for SSR; preferred when using rewrites)
+- `NEXT_OUTPUT` (`export` for static export; omit for default SSR/standalone)
+
+## Deploy (VPS)
+
+See `DEPLOYMENT.md` for the full guide. The short version:
+
+```bash
+make deploy \
+  VPS_SSH=root@107.174.42.198 \
+  VPS_PATH=/opt/docker-projects/heavy-tasks/agent-recipes \
+  PROD_SITE_URL=https://agentrecipes.com \
+  PROD_API_URL=https://api.agentrecipes.com
+```
 
 ## Build / Update the Index
 

@@ -9,6 +9,13 @@ site/
 nextjs-frontend/node_modules/
 nextjs-frontend/.next/
 nextjs-frontend/.npm-cache/
+nextjs-app/node_modules/
+nextjs-app/.next/
+nextjs-app/.npm-cache/
+
+# VPS deploy output (kept empty in git)
+frontend-dist/*
+!frontend-dist/.gitkeep
 
 # Cloudflare secrets
 wrangler.toml
