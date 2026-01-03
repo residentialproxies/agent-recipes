@@ -24,25 +24,34 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.config import settings
+from src.exceptions import DataStoreError, SnapshotNotFoundError
 from src.search import AgentSearch
 
 logger = logging.getLogger(__name__)
 
 # Lazy import SQLite search (only if needed)
 _SQLiteAgentSearch = None
+_sqlite_import_lock = threading.Lock()
 
 
-def _get_sqlite_search_class():
-    """Lazy import SQLite search engine."""
+def _get_sqlite_search_class() -> type:
+    """
+    Lazy import SQLite search engine.
+
+    Thread-safe: uses double-checked locking pattern.
+    """
     global _SQLiteAgentSearch
     if _SQLiteAgentSearch is None:
-        try:
-            from src.search_sqlite import SQLiteAgentSearch
+        with _sqlite_import_lock:
+            # Double-check after acquiring lock
+            if _SQLiteAgentSearch is None:
+                try:
+                    from src.search_sqlite import SQLiteAgentSearch
 
-            _SQLiteAgentSearch = SQLiteAgentSearch
-        except ImportError as e:
-            logger.error(f"Failed to import SQLiteAgentSearch: {e}")
-            raise
+                    _SQLiteAgentSearch = SQLiteAgentSearch
+                except ImportError as e:
+                    logger.error("Failed to import SQLiteAgentSearch: %s", e)
+                    raise
     return _SQLiteAgentSearch
 
 
@@ -58,11 +67,28 @@ _search_engine: AgentSearch | any | None = None
 
 
 def _read_agents_file(path: Path) -> list[dict]:
-    if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
+    """Read agents from JSON file with error handling."""
+    try:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        raise DataStoreError(
+            message="Failed to read agents data file",
+            operation="read",
+            path=str(path),
+        ) from e
+
     alt_path = Path("src/data/agents.json")
-    if alt_path.exists():
-        return json.loads(alt_path.read_text(encoding="utf-8"))
+    try:
+        if alt_path.exists():
+            return json.loads(alt_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        raise DataStoreError(
+            message="Failed to read fallback agents data file",
+            operation="read",
+            path=str(alt_path),
+        ) from e
+
     return []
 
 
@@ -82,8 +108,17 @@ def load_agents(*, path: Path | None = None) -> AgentsSnapshot:
     with _lock:
         if _snapshot is not None and _snapshot.mtime_ns == mtime_ns:
             return _snapshot
-        agents = _read_agents_file(data_path)
-        _snapshot = AgentsSnapshot(mtime_ns=mtime_ns, agents=agents)
+        try:
+            agents = _read_agents_file(data_path)
+            _snapshot = AgentsSnapshot(mtime_ns=mtime_ns, agents=agents)
+        except DataStoreError:
+            raise
+        except Exception as e:
+            logger.error("Unexpected error loading agents: %s", e, exc_info=True)
+            raise DataStoreError(
+                message="Unexpected error loading agents data",
+                operation="load",
+            ) from e
         return _snapshot
 
 

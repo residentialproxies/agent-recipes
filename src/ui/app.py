@@ -25,7 +25,13 @@ from src import domain  # noqa: E402
 from src.search import AgentSearch  # noqa: E402
 from src.ui.context import DATA_PATH, SOURCE_REPO_URL  # noqa: E402
 from src.ui.data import build_search_engine, data_version, load_agents  # noqa: E402
-from src.ui.pages import render_detail_page, render_search_page  # noqa: E402
+from src.ui.pages import (
+    render_comparison_page,
+    render_detail_page,
+    render_favorites_page,
+    render_history_page,
+    render_search_page,
+)  # noqa: E402
 from src.ui.session import init_session_state  # noqa: E402
 from src.ui.styles import apply_styles  # noqa: E402
 
@@ -55,6 +61,20 @@ def main() -> None:
     search_engine: AgentSearch = build_search_engine(agents)
 
     agent_id = st.query_params.get("agent")
+    view = st.query_params.get("view")
+
+    if view == "compare":
+        render_comparison_page(agent_by_id)
+        return
+
+    if view == "history":
+        render_history_page(agent_by_id)
+        return
+
+    if view == "favorites":
+        render_favorites_page(agent_by_id)
+        return
+
     if agent_id:
         selected = agent_by_id.get(agent_id)
         if not selected:

@@ -190,4 +190,3 @@ export async function getFilters(): Promise<AgentFiltersResponse> {
   }
   return response.json();
 }
-

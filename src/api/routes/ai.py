@@ -24,9 +24,26 @@ from src.ai_selector import (
 )
 from src.api.dependencies import get_ai_budget, get_ai_cache, get_rate_limiter, get_snapshot
 from src.api.middleware import get_client_ip
-from src.api.models import AISelectRequest
+from src.api.observability import get_request_id
+from src.api.models import AISelectRequest, AISelectResponse
 from src.config import settings
+from src.circuit_breaker import CircuitBreakerOpenError
 from src.data_store import get_search_engine
+from src.exceptions import (
+    AgentNavigatorError,
+    APIConnectionError,
+    APITimeoutError,
+    BudgetExceededError,
+    CircuitBreakerOpenError as CircuitBreakerOpenErrorExt,
+    MissingAPIKeyError,
+    RateLimitError,
+    exception_to_http_status,
+    handle_exception,
+)
+
+from src.logging_config import get_logger, LogLevel
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/v1/ai", tags=["ai"])
 
@@ -46,23 +63,52 @@ def _ai_candidates(payload: AISelectRequest, snapshot) -> tuple[list[dict], list
     return candidates, candidate_ids
 
 
-@router.post("/select")
+@router.post(
+    "/select",
+    response_model=AISelectResponse,
+    responses={
+        200: {"description": "AI selection result"},
+        402: {"description": "Budget exceeded"},
+        404: {"description": "AI selector disabled"},
+        429: {"description": "Rate limited"},
+        503: {"description": "Service unavailable"},
+    },
+)
 def ai_select(payload: AISelectRequest, request: Request) -> JSONResponse:
+    request_id = get_request_id() or "unknown"
+
     if not settings.enable_ai_selector:
-        raise HTTPException(status_code=404, detail="AI selector disabled")
+        error = AgentNavigatorError("AI selector disabled", request_id=request_id)
+        raise HTTPException(
+            status_code=exception_to_http_status(error),
+            detail=error.to_dict(),
+        ) from None
+
     if not api_mod.HAS_ANTHROPIC:
-        raise HTTPException(status_code=503, detail="Missing anthropic dependency")
+        error = AgentNavigatorError("Missing anthropic dependency", request_id=request_id)
+        raise HTTPException(
+            status_code=exception_to_http_status(error),
+            detail=error.to_dict(),
+        ) from None
+
     if not settings.anthropic_api_key:
-        raise HTTPException(status_code=503, detail="Missing ANTHROPIC_API_KEY")
+        error = MissingAPIKeyError("anthropic", env_var="ANTHROPIC_API_KEY", request_id=request_id)
+        error.log()
+        raise HTTPException(
+            status_code=exception_to_http_status(error),
+            detail=error.to_dict(),
+        ) from None
 
     rate_limiter = get_rate_limiter(request)
     client_ip = get_client_ip(request)
     allowed, retry_after = rate_limiter.check_rate_limit(client_ip, cost=3)
     if not allowed:
+        error = RateLimitError(retry_after=retry_after, request_id=request_id)
+        error.log()
         return JSONResponse(
-            status_code=429,
-            content={"error": "rate_limited", "retry_after": retry_after},
-            headers={"Retry-After": str(retry_after)},
+            status_code=exception_to_http_status(error),
+            content=error.to_dict(),
+            headers={"Retry-After": str(retry_after), "X-Request-ID": request_id},
         )
 
     snapshot = get_snapshot(request)
@@ -81,7 +127,8 @@ def ai_select(payload: AISelectRequest, request: Request) -> JSONResponse:
                 "text": cached.text,
                 "usage": cached.usage,
                 "cost_usd": cached.cost_usd,
-            }
+            },
+            headers={"X-Request-ID": request_id},
         )
 
     try:
@@ -92,17 +139,52 @@ def ai_select(payload: AISelectRequest, request: Request) -> JSONResponse:
             max_output_tokens=settings.max_llm_tokens,
         )
     except AISelectorError as exc:
-        raise HTTPException(status_code=402, detail=str(exc)) from exc
+        error = BudgetExceededError(request_id=request_id)
+        error.log()
+        raise HTTPException(
+            status_code=exception_to_http_status(error),
+            detail=error.to_dict(),
+        ) from exc
 
-    anthropic_service = AnthropicService(api_key=settings.anthropic_api_key)
-    response = anthropic_service.create_non_streaming(
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=settings.max_llm_tokens,
-        model=settings.anthropic_model,
-    )
-    raw_text = anthropic_service.extract_text(response)
-    safe_text = sanitize_final_text(raw_text)
-    usage = anthropic_service.extract_usage(response)
+    try:
+        anthropic_service = AnthropicService(api_key=settings.anthropic_api_key)
+        response = anthropic_service.create_non_streaming(
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=settings.max_llm_tokens,
+            model=settings.anthropic_model,
+        )
+        raw_text = anthropic_service.extract_text(response)
+        safe_text = sanitize_final_text(raw_text)
+        usage = anthropic_service.extract_usage(response)
+    except (CircuitBreakerOpenError, CircuitBreakerOpenErrorExt) as exc:
+        error = CircuitBreakerOpenErrorExt("anthropic", retry_after_seconds=60, request_id=request_id)
+        error.log()
+        raise HTTPException(
+            status_code=exception_to_http_status(error),
+            detail=error.to_dict(),
+        ) from exc
+    except (TimeoutError, APITimeoutError) as exc:
+        error = APITimeoutError("anthropic", timeout_seconds=settings.llm_timeout_seconds, request_id=request_id)
+        error.log()
+        raise HTTPException(
+            status_code=exception_to_http_status(error),
+            detail=error.to_dict(),
+        ) from exc
+    except (ConnectionError, APIConnectionError) as exc:
+        error = APIConnectionError("anthropic", reason=str(exc), request_id=request_id)
+        error.log()
+        raise HTTPException(
+            status_code=exception_to_http_status(error),
+            detail=error.to_dict(),
+        ) from exc
+    except Exception as exc:
+        error = handle_exception(exc, request_id=request_id)
+        logger.error("AI select error", extra={"request_id": request_id, "error_type": type(exc).__name__}, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=error,
+        ) from exc
+
     cost_usd = (
         estimate_cost_usd(
             model=settings.anthropic_model,
@@ -132,11 +214,21 @@ def ai_select(payload: AISelectRequest, request: Request) -> JSONResponse:
             "text": safe_text,
             "usage": usage,
             "cost_usd": cost_usd,
-        }
+        },
+        headers={"X-Request-ID": request_id},
     )
 
 
-@router.post("/select/stream")
+@router.post(
+    "/select/stream",
+    responses={
+        200: {"description": "Server-Sent Events stream", "content": {"text/event-stream": {}}},
+        402: {"description": "Budget exceeded"},
+        404: {"description": "AI selector disabled"},
+        429: {"description": "Rate limited"},
+        503: {"description": "Service unavailable"},
+    },
+)
 def ai_select_stream(payload: AISelectRequest, request: Request) -> StreamingResponse:
     if not settings.enable_ai_selector:
         raise HTTPException(status_code=404, detail="AI selector disabled")
@@ -195,8 +287,25 @@ def ai_select_stream(payload: AISelectRequest, request: Request) -> StreamingRes
                     chunks.append(text)
                     yield _sse({"cached": False, "delta": text, "model": settings.anthropic_model}, event="delta")
                 response_obj = stream.get_final_message()
+        except (CircuitBreakerOpenError, CircuitBreakerOpenErrorExt) as exc:
+            error = CircuitBreakerOpenErrorExt("anthropic", retry_after_seconds=60, request_id=request_id)
+            error.log()
+            yield _sse(error.to_dict(), event="error")
+            return
+        except (TimeoutError, APITimeoutError) as exc:
+            error = APITimeoutError("anthropic", timeout_seconds=settings.llm_timeout_seconds, request_id=request_id)
+            error.log()
+            yield _sse(error.to_dict(), event="error")
+            return
+        except (ConnectionError, APIConnectionError) as exc:
+            error = APIConnectionError("anthropic", reason=str(exc), request_id=request_id)
+            error.log()
+            yield _sse(error.to_dict(), event="error")
+            return
         except Exception as exc:
-            yield _sse({"error": "Upstream error", "detail": str(exc)}, event="error")
+            error = handle_exception(exc, request_id=request_id)
+            logger.error("AI stream error", extra={"request_id": request_id, "error_type": type(exc).__name__}, exc_info=True)
+            yield _sse(error, event="error")
             return
 
         raw_text = "".join(chunks)

@@ -313,6 +313,8 @@ class SQLiteRateLimiter:
         self.cleanup_interval = cleanup_interval
         self._local = threading.local()
         self._lock = threading.Lock()
+        # Track last cleanup time to avoid race conditions
+        self._last_cleanup: float = 0.0
         self._init_db()
 
     def _get_conn(self) -> sqlite3.Connection:
@@ -405,10 +407,11 @@ class SQLiteRateLimiter:
         client_id = self._get_client_id(client_identifier)
         now = time.time()
 
-        # Periodically clean up old entries
-        if int(now) % self.cleanup_interval == 0:
-            with self._lock:
+        # Periodically clean up old entries (thread-safe with atomic check-and-set)
+        with self._lock:
+            if now - self._last_cleanup >= self.cleanup_interval:
                 self._cleanup_old_entries()
+                self._last_cleanup = now
 
         conn = self._get_conn()
         window_start = now - self.window_seconds

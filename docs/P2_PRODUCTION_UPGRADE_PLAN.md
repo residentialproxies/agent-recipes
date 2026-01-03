@@ -14,6 +14,7 @@
 5. **Verification:** unit tests + minimal end-to-end validation for API + exporter + Next.js builds.
 
 Non-goals:
+
 - Full product pivot (no redesign into a different stack).
 - Introducing new paid infrastructure (Redis, external observability vendors) unless strictly necessary.
 
@@ -23,12 +24,13 @@ Non-goals:
 
 ### A) Backend (FastAPI) — “Architect”
 
-- **Request correlation**: ensure `X-Request-ID` is present on *all* responses, including error paths.
-- **Proxy-aware client IP**: use the *same* trusted-proxy logic everywhere (rate limiting + observability logs).
+- **Request correlation**: ensure `X-Request-ID` is present on _all_ responses, including error paths.
+- **Proxy-aware client IP**: use the _same_ trusted-proxy logic everywhere (rate limiting + observability logs).
 - **Consistent errors**: keep a small, stable error shape (`{"error": ...}` or FastAPI `detail`) and include request ID.
 - **Safety**: keep request size limits, SSRF guards, and rate limiting behavior deterministic.
 
 **Acceptance criteria**
+
 - `X-Request-ID` always returned (200/4xx/5xx).
 - Observability logs never trust spoofed `X-Forwarded-For` unless explicitly configured.
 
@@ -39,6 +41,7 @@ Non-goals:
 - **Correctness**: cached results must not be accidentally mutated across requests.
 
 **Acceptance criteria**
+
 - Search cache is safe under concurrent access and returns immutable/copy-safe payloads.
 
 ### C) Frontend (Next.js) — “PM + Architect”
@@ -48,6 +51,7 @@ Non-goals:
 - **SEO basics**: sitemap and robots include at least the core entry points; agent pages should be indexable in SSR mode.
 
 **Acceptance criteria**
+
 - `nextjs-app` builds in SSR mode by default (with optional static-export switch).
 - Client requests resolve without relying on an external reverse proxy.
 
@@ -57,6 +61,7 @@ Non-goals:
 - Continue generating pSEO pages (categories/frameworks/providers/comparisons/tutorials/patterns).
 
 **Acceptance criteria**
+
 - Static export generates a complete sitemap and robots.txt referencing it (when base URL is set).
 
 ### E) Verification & QA — “PM”
@@ -75,4 +80,3 @@ Non-goals:
 - [ ] `nextjs-app` can build in default (SSR) mode
 - [ ] Exporter still produces site + sitemap/robots with `--base-url`
 - [ ] Docs updated where behavior changed (deployment knobs)
-

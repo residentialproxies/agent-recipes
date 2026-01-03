@@ -20,9 +20,26 @@ from src.security import (
     sanitize_llm_output,
     sanitize_markdown,
 )
-from src.ui.components import render_agent_card, render_mermaid
+from src.ui.components import (
+    render_agent_card,
+    render_agent_card_skeleton,
+    render_ai_selector_skeleton,
+    render_comparison_bar,
+    render_comparison_table,
+    render_error_with_retry,
+    render_loading_indicator,
+    render_readme_skeleton,
+    render_mermaid,
+)
 from src.ui.context import SOURCE_BRANCH, SOURCE_REPO_URL, track_event
-from src.ui.session import add_to_recently_viewed, get_favorites, get_session_id, toggle_favorite
+from src.ui.session import (
+    add_to_recently_viewed,
+    clear_comparison,
+    get_comparison_list,
+    get_favorites,
+    get_session_id,
+    toggle_favorite,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +51,8 @@ except ImportError:
     HAS_ANTHROPIC = False
 
 
-@st.cache_data(show_spinner=False)
-def fetch_readme_markdown(readme_url: str) -> str:
+@st.cache_data(show_spinner=False, ttl=300)
+def fetch_readme_markdown(readme_url: str, _retry_count: int = 0) -> str:
     from src.security.validators import validate_github_url
 
     try:
@@ -192,8 +209,30 @@ def render_detail_page(agent: dict, agents: list[dict]) -> None:
         st.warning("README unavailable for this entry.")
         return
 
+    retry_key = f"readme_{agent_id}"
+    if f"{retry_key}_loading" not in st.session_state:
+        st.session_state[f"{retry_key}_loading"] = False
+    if f"{retry_key}_error" not in st.session_state:
+        st.session_state[f"{retry_key}_error"] = None
+
+    if st.session_state[f"{retry_key}_loading"]:
+        render_readme_skeleton()
+        st.session_state[f"{retry_key}_loading"] = False
+        st.rerun()
+
+    if st.session_state[f"{retry_key}_error"]:
+        if render_error_with_retry(
+            f"Could not fetch README: {st.session_state[f'{retry_key}_error']}",
+            retry_key,
+        ):
+            st.session_state[f"{retry_key}_error"] = None
+            st.session_state[f"{retry_key}_loading"] = True
+            st.rerun()
+        st.link_button("View on GitHub", agent.get("github_url", SOURCE_REPO_URL))
+        return
+
     try:
-        md = fetch_readme_markdown(url)
+        md = fetch_readme_markdown(url, _retry_count=int(st.session_state.get(f"{retry_key}_retries", 0)))
         md = domain.rewrite_relative_links(md, agent, default_branch=SOURCE_BRANCH)
         try:
             safe_md = sanitize_markdown(md, max_length=500_000)
@@ -203,29 +242,80 @@ def render_detail_page(agent: dict, agents: list[dict]) -> None:
             st.warning("README content could not be safely displayed.")
             st.link_button("View on GitHub", agent.get("github_url", SOURCE_REPO_URL))
     except (ValueError, urllib.error.HTTPError, urllib.error.URLError) as exc:
-        st.warning(f"Could not fetch README ({exc}).")
-        st.link_button("View on GitHub", agent.get("github_url", SOURCE_REPO_URL))
+        logger.warning("Failed to fetch README for %s: %s", agent.get("id"), exc)
+        st.session_state[f"{retry_key}_error"] = str(exc)
+        st.rerun()
     except (OSError, TimeoutError) as exc:
-        st.warning(f"Network error fetching README: {exc}")
-        st.link_button("View on GitHub", agent.get("github_url", SOURCE_REPO_URL))
+        logger.warning("Network error fetching README for %s: %s", agent.get("id"), exc)
+        st.session_state[f"{retry_key}_error"] = f"Network error: {exc}"
+        st.rerun()
 
 
 def render_ai_selector_hero(agents: list[dict]) -> tuple[bool, str]:
     st.markdown("## 🤖 AI Selector")
     st.caption("Describe what you want to build, and get recommended agent examples.")
 
+    ai_loading_key = "ai_selector_loading"
+    ai_result_key = "ai_selector_result"
+    ai_query_key = "ai_selector_query"
+
+    if ai_result_key not in st.session_state:
+        st.session_state[ai_result_key] = ""
+    if ai_query_key not in st.session_state:
+        st.session_state[ai_query_key] = ""
+
     col1, col2 = st.columns([3, 1])
     with col1:
-        query = st.text_input("What do you want to build?", key="ai_query", placeholder="e.g. RAG chatbot for PDFs")
+        query = st.text_input(
+            "What do you want to build?",
+            key="ai_query",
+            placeholder="e.g. RAG chatbot for PDFs",
+            value=st.session_state.get(ai_query_key, ""),
+        )
     with col2:
         run = st.button("Recommend", type="primary", use_container_width=True)
 
-    if run:
-        with st.spinner("Thinking..."):
-            result = ai_select_agents(query, agents)
-        return True, result
+    if run and query:
+        st.session_state[ai_loading_key] = True
+        st.session_state[ai_query_key] = query
+
+    if st.session_state.get(ai_loading_key, False):
+        render_ai_selector_skeleton()
+        result = ai_select_agents(query or st.session_state.get(ai_query_key, ""), agents)
+        st.session_state[ai_result_key] = result
+        st.session_state[ai_loading_key] = False
+        st.rerun()
+
+    if st.session_state.get(ai_result_key, ""):
+        return True, st.session_state[ai_result_key]
 
     return False, ""
+
+
+def render_search_history_chips() -> str | None:
+    """Render search history chips. Returns clicked query or None."""
+    st.markdown("""
+    <script>
+    (function() {
+        const history = window.AgentSearchEnhancements?.getSearchHistory() || [];
+        if (history.length > 0) {
+            const container = document.querySelector('#search-history-chips');
+            if (container) {
+                container.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">' +
+                    '<small style="color:#666;margin-right:8px;">Recent:</small>' +
+                    history.map(q => `<button onclick="setSearch('${q.replace(/'/g, "\\'")}')" style="background:#f0f0f0;border:none;padding:4px 12px;border-radius:16px;font-size:0.85rem;cursor:pointer;">${q}</button>`).join('') +
+                    '</div>';
+            }
+        }
+    })();
+    function setSearch(q) {
+        const input = document.querySelector('input[data-testid="stTextInput"]');
+        if (input) { input.value = q; input.dispatchEvent(new Event('input', {bubbles:true})); }
+    }
+    </script>
+    <div id="search-history-chips"></div>
+    """, unsafe_allow_html=True)
+    return None
 
 
 def render_search_page(search_engine: AgentSearch, agents: list[dict], agent_by_id: dict[str, dict]) -> None:
@@ -243,11 +333,21 @@ def render_search_page(search_engine: AgentSearch, agents: list[dict], agent_by_
     st.markdown("## Search")
 
     q_default = st.query_params.get("q", "")
+
+    prev_search = st.session_state.get("_prev_search", "")
+    if q_default != prev_search:
+        st.session_state["_prev_search"] = q_default
+        st.session_state["search_loading"] = True
+
     q = st.text_input("Search agents...", value=q_default, key="search_input", help="Type keywords and press Enter")
 
     query_params = st.query_params
     query_params["q"] = q
-    st.caption("Tip: Press `/` to focus search, `Esc` to clear.")
+    st.caption("Tip: Press `/` to focus search, `Esc` to clear. Use `Ctrl/Cmd+Up/Down` for history.")
+
+    # Show search history chips
+    if not q.strip():
+        render_search_history_chips()
 
     ai_ran, ai_text = render_ai_selector_hero(agents)
     if ai_ran and ai_text:
@@ -266,6 +366,9 @@ def render_search_page(search_engine: AgentSearch, agents: list[dict], agent_by_
     results.sort(key=lambda a: (a.get("name", "") or "").lower())
 
     st.markdown(f"### Results ({len(results)})")
+
+    # Show comparison bar if agents are selected
+    render_comparison_bar()
 
     if "_page" not in st.session_state:
         st.session_state["_page"] = 1
@@ -293,7 +396,148 @@ def render_search_page(search_engine: AgentSearch, agents: list[dict], agent_by_
     end = start + page_size
     view = results[start:end]
 
+    if st.session_state.get("search_loading", False):
+        cols = st.columns(2)
+        for i in range(min(4, page_size)):
+            with cols[i % 2]:
+                render_agent_card_skeleton()
+        st.session_state["search_loading"] = False
+        st.rerun()
+
+    if not view:
+        st.info("No agents match your search criteria. Try adjusting filters or search terms.")
+        if q.strip():
+            st.markdown("**Suggestions:**")
+            suggestions = [
+                ("Try broader terms", "e.g., 'chatbot' instead of 'RAG chatbot with PDF support'"),
+                ("Check category filters", "Some agents might be categorized differently"),
+                ("Browse all agents", "Clear the search to see everything"),
+            ]
+            for title, desc in suggestions:
+                st.markdown(f"- **{title}**: {desc}")
+        return
+
     cols = st.columns(2)
     for i, agent in enumerate(view):
+        with cols[i % 2]:
+            render_agent_card(agent, search_query=q)
+
+
+def render_comparison_page(agent_by_id: dict[str, dict]) -> None:
+    """Render agent comparison page."""
+    st.title("Compare Agents")
+    st.caption("Side-by-side comparison of selected agents.")
+
+    comparison_ids = get_comparison_list()
+
+    if not comparison_ids:
+        st.info("No agents selected for comparison.")
+        st.markdown("**How to use:**")
+        st.markdown("1. Go to the search page")
+        st.markdown("2. Click the **+ Compare** button on agent cards")
+        st.markdown("3. Select 2-4 agents to compare")
+        if st.button("Go to Search", use_container_width=True):
+            st.query_params.clear()
+            st.rerun()
+        return
+
+    comparison_agents = []
+    for agent_id in comparison_ids:
+        agent = agent_by_id.get(agent_id)
+        if agent:
+            comparison_agents.append(agent)
+
+    col1, col2, col3 = st.columns([1, 1, 2])
+    with col1:
+        if st.button("← Back to Search", use_container_width=True):
+            st.query_params.clear()
+            st.rerun()
+    with col2:
+        if st.button("Clear All", use_container_width=True):
+            clear_comparison()
+            st.rerun()
+    with col3:
+        st.caption(f"Selected: {len(comparison_agents)}/4 agents")
+
+    st.divider()
+
+    render_comparison_table(comparison_agents)
+
+
+def render_history_page(agent_by_id: dict[str, dict]) -> None:
+    """Render browsing history page."""
+    st.title("Browsing History")
+    st.caption("Your recently viewed agents.")
+
+    recent = get_recently_viewed()
+
+    if not recent:
+        st.info("No browsing history yet. Start exploring agents!")
+        if st.button("Go to Search", use_container_width=True):
+            st.query_params.clear()
+            st.rerun()
+        return
+
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        if st.button("← Back to Search", use_container_width=True):
+            st.query_params.clear()
+            st.rerun()
+    with col2:
+        st.caption(f"{len(recent)} agents in history")
+
+    st.divider()
+
+    for agent_id in recent[:20]:
+        agent = agent_by_id.get(agent_id)
+        if not agent:
+            continue
+
+        with st.container(border=True):
+            col1, col2, col3 = st.columns([3, 1, 1])
+            with col1:
+                icon = CATEGORY_ICONS.get(agent.get("category", "other"), "✨")
+                st.markdown(f"### {icon} {agent.get('name', '(unnamed)')}")
+                st.write(agent.get("description") or "")
+
+            with col2:
+                if st.button("View", key=f"history_view_{agent_id}", use_container_width=True):
+                    st.query_params["agent"] = agent_id
+                    st.rerun()
+
+            with col3:
+                st.link_button("GitHub", agent.get("github_url", SOURCE_REPO_URL), use_container_width=True)
+
+
+def render_favorites_page(agent_by_id: dict[str, dict]) -> None:
+    """Render favorites page."""
+    st.title("Favorites")
+    st.caption("Your saved favorite agents.")
+
+    favorites = get_favorites()
+
+    if not favorites:
+        st.info("No favorites yet. Star agents to save them here!")
+        if st.button("Go to Search", use_container_width=True):
+            st.query_params.clear()
+            st.rerun()
+        return
+
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        if st.button("← Back to Search", use_container_width=True):
+            st.query_params.clear()
+            st.rerun()
+    with col2:
+        st.caption(f"{len(favorites)} favorite agents")
+
+    st.divider()
+
+    cols = st.columns(2)
+    for i, agent_id in enumerate(favorites):
+        agent = agent_by_id.get(agent_id)
+        if not agent:
+            continue
+
         with cols[i % 2]:
             render_agent_card(agent)

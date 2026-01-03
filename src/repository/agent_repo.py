@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,32 @@ class Agent:
     data_json: str  # full JSON backup (including capabilities)
 
 
+class _ConnectionWrapper:
+    """
+    Context manager wrapper for SQLite connections.
+
+    Ensures connections are properly closed after use.
+    Thread-safe when used with thread-local connections.
+    """
+
+    def __init__(self, db_path: Path) -> None:
+        self.db_path = db_path
+        self._conn: sqlite3.Connection | None = None
+
+    def __enter__(self) -> sqlite3.Connection:
+        self._conn = sqlite3.connect(str(self.db_path), timeout=10)
+        self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA foreign_keys = ON;")
+        self._conn.execute("PRAGMA journal_mode = WAL;")
+        self._conn.execute("PRAGMA synchronous = NORMAL;")
+        return self._conn
+
+    def __exit__(self, *args: Any) -> None:
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
+
+
 class AgentRepo:
     """
     Lightweight SQLite repository for WebManus "workers".
@@ -37,20 +65,25 @@ class AgentRepo:
     - Single-file DB (easy deploy + backup)
     - Fast filtered listing via indexes + join table
     - Store full JSON blob for forward compatibility
+    - Thread-safe with proper connection management
     """
 
     def __init__(self, db_path: str = "data/webmanus.db") -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
         self._init_db()
 
-    def _conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path), timeout=10)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute("PRAGMA journal_mode = WAL;")
-        conn.execute("PRAGMA synchronous = NORMAL;")
-        return conn
+    @contextlib.contextmanager
+    def _conn(self) -> Any:
+        """
+        Context manager for SQLite connections.
+
+        Yields a connection that will be automatically closed.
+        Thread-safe: each call gets a fresh connection.
+        """
+        with _ConnectionWrapper(self.db_path) as conn:
+            yield conn
 
     def _init_db(self) -> None:
         with self._conn() as conn:

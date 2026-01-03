@@ -9,7 +9,8 @@ import type { Agent } from "@/types/agent";
 export const revalidate = 3600;
 
 export async function generateStaticParams(): Promise<{ id: string }[]> {
-  const isStaticExport = (process.env.NEXT_OUTPUT || "").toLowerCase() === "export";
+  const isStaticExport =
+    (process.env.NEXT_OUTPUT || "").toLowerCase() === "export";
   if (!isStaticExport) return [];
 
   const ids = await loadRepoAgentIds().catch(() => [] as string[]);
@@ -17,7 +18,8 @@ export async function generateStaticParams(): Promise<{ id: string }[]> {
 }
 
 async function loadAgent(id: string): Promise<Agent | null> {
-  const isStaticExport = (process.env.NEXT_OUTPUT || "").toLowerCase() === "export";
+  const isStaticExport =
+    (process.env.NEXT_OUTPUT || "").toLowerCase() === "export";
   if (isStaticExport) return loadRepoAgentById(id).catch(() => null);
   return getAgent(id).catch(() => null);
 }
@@ -31,7 +33,9 @@ export async function generateMetadata({
   const agent = await loadAgent(id);
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-  const canonical = siteUrl ? new URL(`/agents/${encodeURIComponent(id)}`, siteUrl).toString() : undefined;
+  const canonical = siteUrl
+    ? new URL(`/agents/${encodeURIComponent(id)}`, siteUrl).toString()
+    : undefined;
 
   if (!agent) {
     return {
@@ -42,7 +46,8 @@ export async function generateMetadata({
   }
 
   const title = `${agent.name} | Agent Navigator`;
-  const description = agent.description || "Discover production-ready LLM agent examples.";
+  const description =
+    agent.description || "Discover production-ready LLM agent examples.";
 
   return {
     title,

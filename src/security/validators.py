@@ -11,9 +11,21 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
+from src.exceptions import (
+    InvalidAgentIDError,
+    InvalidURLError as BaseInvalidURLError,
+    ValidationError as BaseValidationError,
+)
 
-class ValidationError(ValueError):
+
+class ValidationError(BaseValidationError):
     """Raised when input fails security validation."""
+
+    pass
+
+
+class InvalidURLError(BaseInvalidURLError):
+    """Raised when URL validation fails."""
 
     pass
 
@@ -62,8 +74,8 @@ def validate_github_url(url: str, *, allow_redirects: bool = False) -> str:
     # Parse URL
     try:
         parsed = urlparse(url)
-    except Exception as e:
-        raise ValidationError(f"Invalid URL format: {e}") from e
+    except ValueError as e:
+        raise InvalidURLError(url, reason=f"Invalid URL format: {e}") from e
 
     # Scheme validation - only HTTPS allowed
     if parsed.scheme != "https":

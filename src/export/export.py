@@ -9,6 +9,7 @@ import logging
 import os
 from pathlib import Path
 
+from src.exceptions import DataStoreError, ExportError
 from src.export._utils import _normalize_record, _read_json, _slug, _write
 from src.export.data import (
     CATEGORY_PAGES,
@@ -23,6 +24,9 @@ from src.export.pages import (
     generate_pattern_pages,
     generate_tech_combo_pages,
     generate_use_case_pages,
+)
+from src.export.pages.pseo_strategic import (
+    generate_all_pseo_pages,
 )
 from src.export.templates import (
     _render_404,
@@ -243,6 +247,15 @@ def export_site(data_path: Path, output_dir: Path, *, base_url: str | None) -> N
         additional_urls=additional_sitemap_urls,
     )
     generate_tech_combo_pages(
+        agents,
+        output_dir,
+        base_url=base_url,
+        site_url=site_url,
+        additional_urls=additional_sitemap_urls,
+    )
+
+    # Strategic pSEO pages (20+ pages for frameworks, categories, comparisons, difficulty)
+    generate_all_pseo_pages(
         agents,
         output_dir,
         base_url=base_url,

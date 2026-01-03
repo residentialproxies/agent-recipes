@@ -9,14 +9,18 @@ Performance Features:
 - Search result caching with LRU eviction
 - Optimized tokenization
 - Efficient BM25 implementation
+- Structured logging for observability
 """
 
 import hashlib
 import logging
 import re
 import threading
+import time
 from collections import OrderedDict
 from typing import Any
+
+from src.exceptions import AgentNotFoundError, InvalidQueryError
 
 try:
     from rank_bm25 import BM25Okapi
@@ -224,6 +228,8 @@ class AgentSearch:
         Returns:
             List of agent dicts with scores, sorted by relevance.
         """
+        start_time = time.perf_counter()
+
         # Check cache first
         cache_key = None
         if self.enable_cache and use_cache:
@@ -231,6 +237,15 @@ class AgentSearch:
             cached = _search_cache.get(cache_key)
             if cached is not None:
                 # Return a deep copy to prevent cache mutation
+                duration_ms = (time.perf_counter() - start_time) * 1000
+                logger.debug(
+                    "search_cache_hit",
+                    extra={
+                        "query": query[:100],
+                        "result_count": len(cached),
+                        "duration_ms": round(duration_ms, 2),
+                    },
+                )
                 return [a.copy() for a in cached[:limit]]
 
         if not query.strip():
@@ -240,6 +255,14 @@ class AgentSearch:
             ]
             if self.enable_cache and cache_key:
                 _search_cache.set(cache_key, [a.copy() for a in results])
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.debug(
+                "search_empty_query",
+                extra={
+                    "result_count": len(results),
+                    "duration_ms": round(duration_ms, 2),
+                },
+            )
             return results
 
         # Tokenize query
@@ -248,6 +271,15 @@ class AgentSearch:
             results = [a.copy() for a in list(self.agents.values())[:limit]]
             if self.enable_cache and cache_key:
                 _search_cache.set(cache_key, [a.copy() for a in results])
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.debug(
+                "search_no_tokens",
+                extra={
+                    "query": query[:100],
+                    "result_count": len(results),
+                    "duration_ms": round(duration_ms, 2),
+                },
+            )
             return results
 
         # Get BM25 scores
@@ -261,6 +293,14 @@ class AgentSearch:
                 scores.append(overlap)
 
         if not scores:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.warning(
+                "search_no_scores",
+                extra={
+                    "query": query[:100],
+                    "duration_ms": round(duration_ms, 2),
+                },
+            )
             return []
 
         # If BM25 cannot discriminate (common in tiny corpora), fall back to substring match.
@@ -294,6 +334,16 @@ class AgentSearch:
 
             if self.enable_cache and cache_key:
                 _search_cache.set(cache_key, output)
+
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.debug(
+                "search_fallback_overlap",
+                extra={
+                    "query": query[:100],
+                    "result_count": len(output),
+                    "duration_ms": round(duration_ms, 2),
+                },
+            )
             return output
 
         # Combine with agent IDs and sort (keep all scores; BM25 may be <=0 for common terms)
@@ -309,6 +359,17 @@ class AgentSearch:
 
         if self.enable_cache and cache_key:
             _search_cache.set(cache_key, output)
+
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.debug(
+            "search_completed",
+            extra={
+                "query": query[:100],
+                "result_count": len(output),
+                "duration_ms": round(duration_ms, 2),
+                "cached": False,
+            },
+        )
 
         return output
 

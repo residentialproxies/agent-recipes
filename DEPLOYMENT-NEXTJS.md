@@ -90,6 +90,7 @@ wrangler pages deploy out --project-name agent-navigator
 - Add: `NEXT_PUBLIC_API_URL = https://your-backend.com`
 
 **Note**:
+
 - Cloudflare Pages does not run Next.js SSR by default. Use `NEXT_OUTPUT=export` for static export.
 - In static export mode, Next.js rewrites are not applied; serve `/api/*` via a reverse proxy/CDN rule, or configure the frontend to call the backend origin directly.
 

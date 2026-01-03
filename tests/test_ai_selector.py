@@ -118,12 +118,12 @@ class TestMakeCacheKey:
 
         assert key1 != key2
 
-    def test_cache_key_order_matters(self) -> None:
-        """Test that candidate order affects cache key."""
+    def test_cache_key_order_independent(self) -> None:
+        """Test that candidate order does NOT affect cache key (sorted)."""
         key1 = make_cache_key(model="model", query="query", candidate_ids=["agent1", "agent2"])
         key2 = make_cache_key(model="model", query="query", candidate_ids=["agent2", "agent1"])
 
-        assert key1 != key2
+        assert key1 == key2
 
     def test_cache_key_filters_empty_candidates(self) -> None:
         """Test that empty candidate IDs are filtered out."""
@@ -131,6 +131,30 @@ class TestMakeCacheKey:
         key2 = make_cache_key(model="model", query="query", candidate_ids=["agent1", "agent2"])
 
         assert key1 == key2
+
+    def test_cache_key_no_collision_with_commas(self) -> None:
+        """Test that IDs containing commas don't cause collisions."""
+        # ["a,b", "c"] should NOT collide with ["a", "b,c"]
+        key1 = make_cache_key(model="model", query="query", candidate_ids=["a,b", "c"])
+        key2 = make_cache_key(model="model", query="query", candidate_ids=["a", "b,c"])
+
+        assert key1 != key2
+
+    def test_cache_key_all_candidates_included(self) -> None:
+        """Test that all candidate IDs are included in hash."""
+        # Different sized lists should produce different keys
+        key1 = make_cache_key(model="model", query="query", candidate_ids=["agent1", "agent2"])
+        key2 = make_cache_key(model="model", query="query", candidate_ids=["agent1", "agent2", "agent3"])
+
+        assert key1 != key2
+
+    def test_cache_key_unique_per_full_list(self) -> None:
+        """Test that full candidate list determines cache key uniquely."""
+        # Same model and query but different candidates
+        key1 = make_cache_key(model="model", query="find coding assistant", candidate_ids=["agent1", "agent2", "agent3"])
+        key2 = make_cache_key(model="model", query="find coding assistant", candidate_ids=["agent1", "agent2", "agent4"])
+
+        assert key1 != key2
 
 
 class TestBuildAISselectorPrompt:

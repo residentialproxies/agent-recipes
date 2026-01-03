@@ -141,7 +141,9 @@ def _render_index(agents: list[dict], base_url: str | None = None) -> str:
     for a in agents:
         icon = _category_icon(a["category"])
         name = html.escape(a["name"])
-        desc = html.escape(a.get("description") or "")
+        # Generate description if empty
+        agent_desc = a.get("description") or _generate_meta_description(a)
+        desc = html.escape(agent_desc[:150])
         href = f"/agents/{html.escape(a['id'])}/"
         badges = []
         if a.get("frameworks"):
@@ -161,45 +163,53 @@ def _render_index(agents: list[dict], base_url: str | None = None) -> str:
 """
         )
 
+    # Normalize base_url: treat empty string the same as None
+    _base_url = base_url if base_url and base_url.strip() else None
+    site_url = (_base_url or "https://agent-navigator.com").rstrip("/")
+
     # SEO elements
-    site_url = base_url.rstrip("/") if base_url else "https://agent-navigator.com"
     description = f"Search and browse {total} runnable LLM agent/app examples with tutorials, code, and setup instructions. RAG, chatbots, multi-agent systems, and more."
 
-    og_tags = _generate_open_graph_tags(
-        title="Agent Navigator - LLM Agent Examples & Tutorials",
-        description=description,
-        url=site_url,
-        image=f"{site_url}/assets/og-image.png",
-    )
+    # Only generate OG tags and schema if base_url is provided
+    og_tags = None
+    combined_schema = ""
 
-    # Schema.org for homepage - combine WebSite and Organization schemas
-    website_schema = {
-        "@context": "https://schema.org",
-        "@type": "WebSite",
-        "name": "Agent Navigator",
-        "description": description,
-        "url": site_url,
-        "potentialAction": {
-            "@type": "SearchAction",
-            "target": {
-                "@type": "EntryPoint",
-                "urlTemplate": f"{site_url}/?q={{search_term_string}}",
-            },
-            "query-input": "required name=search_term_string",
-        },
-    }
-
-    # Add Organization schema
-    organization_schema = json.loads(
-        _generate_organization_schema(
-            name="Agent Navigator",
-            url=site_url,
+    if _base_url:
+        og_tags = _generate_open_graph_tags(
+            title="Agent Navigator - LLM Agent Examples & Tutorials",
             description=description,
+            url=site_url,
+            image=f"{site_url}/assets/og-image.png",
         )
-    )
 
-    # Combine schemas
-    combined_schema = json.dumps([website_schema, organization_schema], indent=2)
+        # Schema.org for homepage - combine WebSite and Organization schemas
+        website_schema = {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "Agent Navigator",
+            "description": description,
+            "url": site_url,
+            "potentialAction": {
+                "@type": "SearchAction",
+                "target": {
+                    "@type": "EntryPoint",
+                    "urlTemplate": f"{site_url}/?q={{search_term_string}}",
+                },
+                "query-input": "required name=search_term_string",
+            },
+        }
+
+        # Add Organization schema
+        organization_schema = json.loads(
+            _generate_organization_schema(
+                name="Agent Navigator",
+                url=site_url,
+                description=description,
+            )
+        )
+
+        # Combine schemas
+        combined_schema = json.dumps([website_schema, organization_schema], indent=2)
 
     body = f"""
 <section class="hero">
@@ -232,7 +242,7 @@ def _render_index(agents: list[dict], base_url: str | None = None) -> str:
         "Agent Navigator - LLM Agent Examples & Tutorials",
         description,
         body,
-        canonical=site_url + "/" if base_url else None,
+        canonical=site_url + "/" if _base_url else None,
         asset_prefix="./",
         schema_json=combined_schema,
         og_tags=og_tags,
@@ -243,7 +253,11 @@ def _render_agent(agent: dict, base_url: str | None = None, all_agents: list[dic
     """Render an individual agent detail page."""
     icon = _category_icon(agent["category"])
     name = html.escape(agent["name"])
-    desc = html.escape(agent.get("description") or "")
+    # Use generated description if agent description is empty
+    agent_desc = agent.get("description") or ""
+    if not agent_desc:
+        agent_desc = _generate_meta_description(agent)
+    desc = html.escape(agent_desc)
     category = html.escape(agent.get("category") or "other").replace("_", " ")
     category_raw = agent.get("category") or "other"
     complexity = html.escape(agent.get("complexity") or "intermediate")
@@ -277,9 +291,11 @@ def _render_agent(agent: dict, base_url: str | None = None, all_agents: list[dic
     qs = html.escape((agent.get("quick_start") or "").strip())[:1200]
     clone = html.escape((agent.get("clone_command") or "").strip())[:400]
 
-    site_url = base_url.rstrip("/") if base_url else "https://agent-navigator.com"
+    # Normalize base_url: treat empty string the same as None
+    _base_url = base_url if base_url and base_url.strip() else None
+    site_url = (_base_url or "https://agent-navigator.com").rstrip("/")
     agent_url = f"{site_url}/agents/{agent['id']}/"
-    canonical = agent_url if base_url else None
+    canonical = agent_url if _base_url else None
 
     # Generate SEO elements
     meta_desc = _generate_meta_description(agent)
@@ -294,22 +310,25 @@ def _render_agent(agent: dict, base_url: str | None = None, all_agents: list[dic
         with suppress(OSError, ValueError):
             published_time = datetime.fromtimestamp(agent["added_at"]).strftime("%Y-%m-%dT%H:%M:%S%z")
 
-    og_tags = _generate_open_graph_tags(
-        title=f"{agent['name']} - Agent Navigator",
-        description=meta_desc,
-        url=agent_url,
-        image=f"{site_url}/assets/og-agent-{agent['id']}.png",
-        og_type="article",
-        published_time=published_time,
-    )
+    # Only generate OG tags if base_url is provided
+    og_tags = None
+    if _base_url:
+        og_tags = _generate_open_graph_tags(
+            title=f"{agent['name']} - Agent Navigator",
+            description=meta_desc,
+            url=agent_url,
+            image=f"{site_url}/assets/og-agent-{agent['id']}.png",
+            og_type="article",
+            published_time=published_time,
+        )
 
-    # Generate breadcrumb schema
+    # Generate breadcrumb schema only if base_url is provided
     breadcrumbs = [
         ("Home", "/"),
         ("Agents", "/#browse"),
         (agent["name"], f"/agents/{agent['id']}/"),
     ]
-    breadcrumb_schema = _generate_breadcrumb_schema(breadcrumbs, site_url) if base_url else ""
+    breadcrumb_schema = _generate_breadcrumb_schema(breadcrumbs, site_url) if _base_url else ""
 
     # Generate WebPage schema with published_time
     webpage_schema = _generate_webpage_schema(agent, site_url, published_time)
@@ -319,7 +338,7 @@ def _render_agent(agent: dict, base_url: str | None = None, all_agents: list[dic
     if breadcrumb_schema:
         schema_list.append(json.loads(breadcrumb_schema))
     schema_list.append(json.loads(webpage_schema))
-    combined_schema = json.dumps(schema_list, indent=2)
+    combined_schema = json.dumps(schema_list, indent=2) if _base_url else ""
 
     # Generate related agents section
     related_html = ""
@@ -442,7 +461,9 @@ def _render_category_landing(
     cards = []
     for a in agents[:50]:  # Limit for performance
         name = html.escape(a["name"])
-        desc = html.escape(a.get("description") or "")[:150]
+        # Generate description if empty
+        agent_desc = a.get("description") or _generate_meta_description(a)
+        desc = html.escape(agent_desc[:150])
         href = f"/agents/{html.escape(a['id'])}/"
         badges = []
 
@@ -488,17 +509,21 @@ def _render_category_landing(
     )
 
     # SEO elements
-    site_url = base_url.rstrip("/") if base_url else "https://agent-navigator.com"
+    _base_url = base_url if base_url and base_url.strip() else None
+    site_url = (_base_url or "https://agent-navigator.com").rstrip("/")
     category_url = f"{site_url}/{category_key}/"
 
     meta_desc = f"{description} Browse {count} examples with code, tutorials, and setup instructions."
 
-    og_tags = _generate_open_graph_tags(
-        title=f"{heading} - Agent Navigator",
-        description=meta_desc,
-        url=category_url,
-        image=f"{site_url}/assets/og-{category_key}.png",
-    )
+    # Only generate OG tags if base_url is provided
+    og_tags = None
+    if _base_url:
+        og_tags = _generate_open_graph_tags(
+            title=f"{heading} - Agent Navigator",
+            description=meta_desc,
+            url=category_url,
+            image=f"{site_url}/assets/og-{category_key}.png",
+        )
 
     # FAQ Schema - map category key to schema type
     schema_category = {
@@ -520,7 +545,7 @@ def _render_category_landing(
         ("Home", "/"),
         (category_name, f"/{category_key}/"),
     ]
-    breadcrumb_schema = _generate_breadcrumb_schema(breadcrumbs, site_url) if base_url else ""
+    breadcrumb_schema = _generate_breadcrumb_schema(breadcrumbs, site_url) if _base_url else ""
 
     # Generate CollectionPage schema for category pages
     collection_page_schema = _generate_collection_page_schema(
@@ -537,11 +562,11 @@ def _render_category_landing(
         "mainEntity": faqs,
     }
     schema_list = [faq_schema_obj]
-    if base_url:
+    if _base_url:
         schema_list.append(json.loads(collection_page_schema))
     if breadcrumb_schema:
         schema_list.append(json.loads(breadcrumb_schema))
-    combined_schema = json.dumps(schema_list, indent=2)
+    combined_schema = json.dumps(schema_list, indent=2) if _base_url else ""
 
     # Build related links section
     related_html = ""
@@ -618,7 +643,7 @@ def _render_category_landing(
         f"{heading} - Agent Navigator",
         meta_desc,
         body,
-        canonical=category_url if base_url else None,
+        canonical=category_url if _base_url else None,
         asset_prefix="../",
         schema_json=combined_schema,
         og_tags=og_tags,
@@ -639,7 +664,8 @@ def _render_comparison_page(
     faq_data: list[dict],
 ) -> str:
     """Render a pSEO comparison page between two frameworks/providers."""
-    site_url = base_url.rstrip("/") if base_url else "https://agent-navigator.com"
+    _base_url = base_url if base_url and base_url.strip() else None
+    site_url = (_base_url or "https://agent-navigator.com").rstrip("/")
     comparison_url = f"{site_url}/compare/{comparison_key}/"
 
     left_count = len(left_agents)
@@ -647,12 +673,15 @@ def _render_comparison_page(
 
     meta_desc = f"{description} Compare examples, features, and use cases. {left_count} {left_option} examples vs {right_count} {right_option} examples."
 
-    og_tags = _generate_open_graph_tags(
-        title=f"{title} - Agent Navigator",
-        description=meta_desc,
-        url=comparison_url,
-        image=f"{site_url}/assets/og-compare-{comparison_key}.png",
-    )
+    # Only generate OG tags if base_url is provided
+    og_tags = None
+    if _base_url:
+        og_tags = _generate_open_graph_tags(
+            title=f"{title} - Agent Navigator",
+            description=meta_desc,
+            url=comparison_url,
+            image=f"{site_url}/assets/og-compare-{comparison_key}.png",
+        )
 
     # Build breadcrumb schema
     breadcrumbs = [
@@ -660,7 +689,7 @@ def _render_comparison_page(
         ("Comparisons", "/compare/"),
         (title, f"/compare/{comparison_key}/"),
     ]
-    breadcrumb_schema = _generate_breadcrumb_schema(breadcrumbs, site_url) if base_url else ""
+    breadcrumb_schema = _generate_breadcrumb_schema(breadcrumbs, site_url) if _base_url else ""
 
     # FAQ Schema
     faq_schema_obj = {
@@ -668,7 +697,7 @@ def _render_comparison_page(
         "@type": "FAQPage",
         "mainEntity": faq_data,
     }
-    combined_schema = json.dumps(faq_schema_obj, indent=2)
+    combined_schema = json.dumps(faq_schema_obj, indent=2) if _base_url else ""
     if breadcrumb_schema:
         schema_list = [faq_schema_obj, json.loads(breadcrumb_schema)]
         combined_schema = json.dumps(schema_list, indent=2)
@@ -746,7 +775,7 @@ def _render_comparison_page(
         title,
         meta_desc,
         body,
-        canonical=comparison_url if base_url else None,
+        canonical=comparison_url if _base_url else None,
         asset_prefix="../../",
         schema_json=combined_schema,
         og_tags=og_tags,
@@ -765,19 +794,23 @@ def _render_tutorial_page(
     difficulty: str = "Intermediate",
 ) -> str:
     """Render a pSEO how-to/tutorial page."""
-    site_url = base_url.rstrip("/") if base_url else "https://agent-navigator.com"
+    _base_url = base_url if base_url and base_url.strip() else None
+    site_url = (_base_url or "https://agent-navigator.com").rstrip("/")
     tutorial_url = f"{site_url}/how-to/{tutorial_key}/"
 
     count = len(agents)
 
     meta_desc = f"{description} Step-by-step guide with {count} working examples and code samples."
 
-    og_tags = _generate_open_graph_tags(
-        title=f"{title} - Agent Navigator",
-        description=meta_desc,
-        url=tutorial_url,
-        image=f"{site_url}/assets/og-howto-{tutorial_key}.png",
-    )
+    # Only generate OG tags if base_url is provided
+    og_tags = None
+    if _base_url:
+        og_tags = _generate_open_graph_tags(
+            title=f"{title} - Agent Navigator",
+            description=meta_desc,
+            url=tutorial_url,
+            image=f"{site_url}/assets/og-howto-{tutorial_key}.png",
+        )
 
     # Build breadcrumb schema
     breadcrumbs = [
@@ -785,7 +818,7 @@ def _render_tutorial_page(
         ("Tutorials", "/how-to/"),
         (title, f"/how-to/{tutorial_key}/"),
     ]
-    breadcrumb_schema = _generate_breadcrumb_schema(breadcrumbs, site_url) if base_url else ""
+    breadcrumb_schema = _generate_breadcrumb_schema(breadcrumbs, site_url) if _base_url else ""
 
     # FAQ Schema + HowTo Schema
     faq_schema_obj = {
@@ -832,7 +865,7 @@ def _render_tutorial_page(
     schema_list = [faq_schema_obj, howto_schema]
     if breadcrumb_schema:
         schema_list.append(json.loads(breadcrumb_schema))
-    combined_schema = json.dumps(schema_list, indent=2)
+    combined_schema = json.dumps(schema_list, indent=2) if _base_url else ""
 
     # Build FAQ HTML
     faq_html = ""
@@ -905,7 +938,7 @@ def _render_tutorial_page(
         title,
         meta_desc,
         body,
-        canonical=tutorial_url if base_url else None,
+        canonical=tutorial_url if _base_url else None,
         asset_prefix="../../",
         schema_json=combined_schema,
         og_tags=og_tags,
@@ -914,25 +947,31 @@ def _render_tutorial_page(
 
 def _render_comparison_index(*, base_url: str | None) -> str:
     """Render the comparison index page."""
-    site_url = base_url.rstrip("/") if base_url else "https://agent-navigator.com"
+    _base_url = base_url if base_url and base_url.strip() else None
+    site_url = (_base_url or "https://agent-navigator.com").rstrip("/")
     index_url = f"{site_url}/compare/"
 
     meta_desc = "Compare AI agent frameworks, LLM providers, and tools. Side-by-side comparisons of LangChain vs LlamaIndex, CrewAI vs AutoGen, OpenAI vs Anthropic, and more."
 
-    og_tags = _generate_open_graph_tags(
-        title="Framework & Provider Comparisons - Agent Navigator",
-        description=meta_desc,
-        url=index_url,
-        image=f"{site_url}/assets/og-compare.png",
-    )
+    # Only generate OG tags if base_url is provided
+    og_tags = None
+    if _base_url:
+        og_tags = _generate_open_graph_tags(
+            title="Framework & Provider Comparisons - Agent Navigator",
+            description=meta_desc,
+            url=index_url,
+            image=f"{site_url}/assets/og-compare.png",
+        )
 
     comparisons = [
-        ("LangChain vs LlamaIndex", "compare/langchain-vs-llamaindex/", "Compare two leading RAG and agent frameworks"),
-        ("CrewAI vs AutoGen", "compare/crewai-vs-autogen/", "Multi-agent framework comparison"),
-        ("OpenAI vs Anthropic", "compare/openai-vs-anthropic/", "Leading LLM API providers"),
-        ("LangChain vs Raw API", "compare/langchain-vs-raw-api/", "Framework vs direct API calls"),
-        ("Google vs OpenAI", "compare/google-vs-openai/", "Gemini vs GPT comparison"),
-        ("Local vs Cloud LLMs", "compare/local-vs-cloud-llms/", "Privacy and cost comparison"),
+        ("LangChain vs LlamaIndex", "/langchain-vs-llamaindex/", "Compare two leading RAG and agent frameworks"),
+        ("CrewAI vs AutoGen", "/crewai-vs-autogen/", "Multi-agent framework comparison"),
+        ("OpenAI vs Anthropic", "/openai-vs-anthropic/", "Leading LLM API providers"),
+        ("LangChain vs Raw API", "/compare/langchain-vs-raw-api/", "Framework vs direct API calls"),
+        ("Google vs OpenAI", "/compare/google-vs-openai/", "Gemini vs GPT comparison"),
+        ("Local vs Cloud LLMs", "/local-vs-cloud-llm/", "Privacy and cost comparison"),
+        ("RAG vs Vector Search", "/rag-vs-vector-search/", "Retrieval strategies comparison"),
+        ("Sync vs Async Agents", "/sync-vs-async-agents/", "Execution patterns comparison"),
     ]
 
     cards = "".join(
@@ -971,7 +1010,7 @@ def _render_comparison_index(*, base_url: str | None) -> str:
         "Framework & Provider Comparisons - Agent Navigator",
         meta_desc,
         body,
-        canonical=index_url if base_url else None,
+        canonical=index_url if _base_url else None,
         asset_prefix="../",
         og_tags=og_tags,
     )
@@ -979,34 +1018,38 @@ def _render_comparison_index(*, base_url: str | None) -> str:
 
 def _render_tutorial_index(*, base_url: str | None) -> str:
     """Render the tutorials index page."""
-    site_url = base_url.rstrip("/") if base_url else "https://agent-navigator.com"
+    _base_url = base_url if base_url and base_url.strip() else None
+    site_url = (_base_url or "https://agent-navigator.com").rstrip("/")
     index_url = f"{site_url}/how-to/"
 
     meta_desc = "Step-by-step tutorials for building AI agents. Learn RAG chatbots, multi-agent systems, local LLM deployment, and more with working code examples."
 
-    og_tags = _generate_open_graph_tags(
-        title="AI Agent Tutorials - Agent Navigator",
-        description=meta_desc,
-        url=index_url,
-        image=f"{site_url}/assets/og-howto.png",
-    )
+    # Only generate OG tags if base_url is provided
+    og_tags = None
+    if _base_url:
+        og_tags = _generate_open_graph_tags(
+            title="AI Agent Tutorials - Agent Navigator",
+            description=meta_desc,
+            url=index_url,
+            image=f"{site_url}/assets/og-howto.png",
+        )
 
     tutorials = [
         (
             "Build RAG Chatbot",
-            "how-to/build-rag-chatbot/",
+            "/rag-tutorials/",
             "Beginner",
             "Create a retrieval augmented generation chatbot with vector database",
         ),
         (
             "Multi-Agent System",
-            "how-to/multi-agent-system/",
+            "/multi-agent-systems/",
             "Intermediate",
             "Build multi-agent systems with CrewAI and LangChain",
         ),
         (
             "Local LLM with Ollama",
-            "how-to/local-llm-ollama/",
+            "/local-llm-agents/",
             "Beginner",
             "Run LLM agents locally with Ollama for privacy",
         ),
@@ -1016,13 +1059,17 @@ def _render_tutorial_index(*, base_url: str | None) -> str:
             "Intermediate",
             "Implement function calling with OpenAI API",
         ),
-        ("LangChain Agents", "how-to/langchain-agents/", "Intermediate", "Build agents using LangChain framework"),
+        ("LangChain Agents", "/langchain-agents/", "Intermediate", "Build agents using LangChain framework"),
         (
             "Anthropic Claude Agents",
             "how-to/anthropic-claude-agents/",
             "Intermediate",
             "Create agents with Anthropic's Claude API",
         ),
+        ("CrewAI Tutorials", "/crewai-tutorials/", "Intermediate", "Multi-agent systems with CrewAI"),
+        ("LlamaIndex Examples", "/llamaindex-examples/", "Intermediate", "RAG applications with LlamaIndex"),
+        ("Beginner AI Projects", "/beginner-ai-projects/", "Beginner", "Start your AI journey"),
+        ("Advanced Agent Patterns", "/advanced-agent-patterns/", "Advanced", "Master complex architectures"),
     ]
 
     cards = "".join(
@@ -1062,7 +1109,7 @@ def _render_tutorial_index(*, base_url: str | None) -> str:
         "AI Agent Tutorials - Agent Navigator",
         meta_desc,
         body,
-        canonical=index_url if base_url else None,
+        canonical=index_url if _base_url else None,
         asset_prefix="../",
         og_tags=og_tags,
     )
@@ -1159,6 +1206,9 @@ pre { background: rgba(0,0,0,.25); padding: .75rem; border-radius: .75rem; borde
 
 def _render_404(base_url: str | None) -> str:
     """Render a simple 404 page for static hosting (e.g., Cloudflare Pages)."""
+    _base_url = base_url if base_url and base_url.strip() else None
+    site_url = (_base_url or "https://agent-navigator.com").rstrip("/")
+
     body = """
 <section class="hero">
   <h1>Page not found</h1>
@@ -1173,7 +1223,7 @@ def _render_404(base_url: str | None) -> str:
   <p class="muted">Use the homepage search box to quickly find an agent by name, category, framework, or provider.</p>
 </section>
 """.strip()
-    canonical = f"{base_url.rstrip('/')}/404.html" if base_url else None
+    canonical = f"{site_url}/404.html" if _base_url else None
     return _layout(
         title="404 — Agent Navigator",
         description="Page not found.",

@@ -64,6 +64,12 @@ class Settings:
     ai_cache_ttl_seconds: int = 60 * 60 * 6  # 6 hours
     ai_daily_budget_usd: float = 5.0
 
+    # Circuit breaker
+    circuit_breaker_anthropic_failure_threshold: int = 5
+    circuit_breaker_anthropic_timeout_seconds: int = 60
+    circuit_breaker_github_failure_threshold: int = 3
+    circuit_breaker_github_timeout_seconds: int = 120
+
     # Indexer settings
     max_readme_chars: int = 8000
     indexer_workers: int = 20
@@ -154,6 +160,16 @@ class Settings:
             self.ai_cache_ttl_seconds = int(ai_cache_ttl)
         if ai_budget := os.environ.get("AI_DAILY_BUDGET_USD"):
             self.ai_daily_budget_usd = float(ai_budget)
+
+        # Circuit breaker
+        if threshold := os.environ.get("CIRCUIT_BREAKER_ANTHROPIC_FAILURE_THRESHOLD"):
+            self.circuit_breaker_anthropic_failure_threshold = int(threshold)
+        if timeout := os.environ.get("CIRCUIT_BREAKER_ANTHROPIC_TIMEOUT_SECONDS"):
+            self.circuit_breaker_anthropic_timeout_seconds = int(timeout)
+        if threshold := os.environ.get("CIRCUIT_BREAKER_GITHUB_FAILURE_THRESHOLD"):
+            self.circuit_breaker_github_failure_threshold = int(threshold)
+        if timeout := os.environ.get("CIRCUIT_BREAKER_GITHUB_TIMEOUT_SECONDS"):
+            self.circuit_breaker_github_timeout_seconds = int(timeout)
 
         # Indexer
         if workers := os.environ.get("INDEXER_WORKERS"):

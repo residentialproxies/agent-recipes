@@ -42,6 +42,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from src.exceptions import IndexingError, LLMIndexingError, MissingAPIKeyError
+
 logger = logging.getLogger(__name__)
 
 # Data quality utilities - support both direct and module imports
@@ -60,14 +62,14 @@ except ImportError:
 
 try:
     HAS_ANTHROPIC = True
-except Exception:
+except ImportError:
     HAS_ANTHROPIC = False
 
 try:
     from tqdm import tqdm
 
     HAS_TQDM = True
-except Exception:
+except ImportError:
     HAS_TQDM = False
 
 
@@ -803,10 +805,12 @@ class RepoIndexer:
         if self.enable_llm:
             try:
                 import anthropic as _anthropic  # type: ignore
-            except Exception:
+            except ImportError:
                 self.enable_llm = False
                 self.client = None
             else:
+                if not anthropic_api_key:
+                    raise MissingAPIKeyError("anthropic", env_var="ANTHROPIC_API_KEY")
                 self.client = _anthropic.Anthropic(api_key=anthropic_api_key)
 
     def _load_cache(self) -> None:
@@ -814,8 +818,8 @@ class RepoIndexer:
             return
         try:
             raw = json.loads(self.cache_path.read_text(encoding="utf-8"))
-        except Exception as e:
-            print(f"Cache load failed: {e}, starting fresh")
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Cache load failed: %s, starting fresh", e)
             return
 
         wanted = {f.name for f in dataclasses.fields(AgentMetadata)}
@@ -825,7 +829,7 @@ class RepoIndexer:
             normalized = {k: payload.get(k) for k in wanted}
             try:
                 self.cache[agent_id] = AgentMetadata(**normalized)  # type: ignore[arg-type]
-            except Exception as exc:
+            except (TypeError, ValueError) as exc:
                 logger.debug("Skipping cache entry %s: %s", agent_id, exc)
                 continue
         print(f"Loaded {len(self.cache)} cached entries")
@@ -879,7 +883,7 @@ class RepoIndexer:
 
         try:
             readme_content = readme_path.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
+        except OSError:
             return None
 
         content_hash = _content_hash(readme_content)
@@ -901,7 +905,7 @@ class RepoIndexer:
         if not should_try_llm:
             try:
                 import unittest.mock as _mock
-            except Exception:
+            except ImportError:
                 _mock = None
             else:
                 if isinstance(getattr(self, "_extract_with_llm", None), _mock.Mock):
@@ -911,8 +915,13 @@ class RepoIndexer:
             try:
                 extracted = _normalize_llm_output(self._extract_with_llm(readme_content, folder_path))
                 _metrics.increment("llm_success")
-            except Exception:
+            except (ConnectionError, TimeoutError) as e:
                 _metrics.increment("llm_failures")
+                logger.warning("LLM extraction failed for %s: %s", agent_id, e)
+                extracted = None
+            except Exception as e:
+                _metrics.increment("llm_failures")
+                logger.debug("LLM extraction failed for %s: %s", agent_id, e)
                 extracted = None
 
         if extracted is None:
@@ -1051,12 +1060,18 @@ class RepoIndexer:
                     result = future.result()
                     if result:
                         agents.append(result)
-                except Exception as e:
+                except (IndexingError, LLMIndexingError) as e:
                     readme, _ = futures[future]
                     if HAS_TQDM:
-                        tqdm.write(f"Error processing {readme}: {e}")
+                        tqdm.write(f"Indexing error for {readme}: {e}")
                     else:
-                        print(f"Error processing {readme}: {e}")
+                        print(f"Indexing error for {readme}: {e}")
+                except OSError as e:
+                    readme, _ = futures[future]
+                    logger.warning("File access error for %s: %s", readme, e)
+                except Exception as e:
+                    readme, _ = futures[future]
+                    logger.error("Unexpected error processing %s: %s", readme, e, exc_info=True)
 
         return agents
 

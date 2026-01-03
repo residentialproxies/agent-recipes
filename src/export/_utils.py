@@ -5,22 +5,40 @@ Shared utility functions for static site export.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 import unicodedata
 from datetime import datetime
 from pathlib import Path
 
+from src.exceptions import DataStoreError, ExportError
+
+logger = logging.getLogger(__name__)
+
 
 def _read_json(path: Path) -> list[dict]:
     """Read JSON file and return as list of dictionaries."""
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        raise DataStoreError(
+            message="Failed to read data file",
+            operation="read",
+            path=str(path),
+        ) from e
 
 
 def _write(path: Path, content: str) -> None:
     """Write content to file, creating parent directories if needed."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    except OSError as e:
+        raise ExportError(
+            message="Failed to write export file",
+            output_path=str(path),
+        ) from e
 
 
 # Common prefixes that should be stripped from agent names for shorter slugs

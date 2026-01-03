@@ -15,11 +15,13 @@ from src.api.middleware import setup_compression, setup_cors, setup_request_size
 from src.api.observability import ObservabilityMiddleware, generate_request_id, get_request_id
 from src.api.routes import agents as agents_routes
 from src.api.routes import ai as ai_routes
+from src.api.routes import users as users_routes
 from src.api.routes import webmanus as webmanus_routes
 from src.api.state import AppState
 from src.config import settings
 from src.data_store import get_search_engine, load_agents
 from src.repository import AgentRepo
+from src.repository.users import get_user_repo
 from src.security.rate_limit import RateLimitConfig, get_rate_limiter
 from src.security.validators import ValidationError
 
@@ -33,7 +35,9 @@ def create_app(
     async def lifespan(app: FastAPI):
         snap = load_agents(path=agents_path)
         repo = AgentRepo(str(webmanus_db_path or settings.webmanus_db_path))
-        app.state.state = AppState(snapshot=snap, webmanus_repo=repo)
+        user_repo = get_user_repo()
+        app.state.state = AppState(snapshot=snap, webmanus_repo=repo, user_repo=user_repo)
+        app.state.user_repo = user_repo
         get_search_engine(snapshot=snap)
         yield
 
@@ -70,6 +74,7 @@ def create_app(
 
     app.include_router(agents_routes.router)
     app.include_router(ai_routes.router)
+    app.include_router(users_routes.router)
     app.include_router(webmanus_routes.router)
 
     def _error_headers(request: Request) -> dict[str, str]:

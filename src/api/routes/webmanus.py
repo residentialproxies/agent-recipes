@@ -27,7 +27,14 @@ from src.ai_selector import (
 )
 from src.api.dependencies import get_ai_budget, get_ai_cache, get_rate_limiter, get_webmanus_repo
 from src.api.middleware import get_client_ip
-from src.api.models import WebManusConsultRequest, WebManusConsultResponse, WebManusRecommendation
+from src.api.models import (
+    CapabilityListResponse,
+    WebManusConsultRequest,
+    WebManusConsultResponse,
+    WebManusRecommendation,
+    WorkerListResponse,
+    WorkerResponse,
+)
 from src.config import settings
 
 router = APIRouter(prefix="/v1", tags=["webmanus"])
@@ -70,16 +77,20 @@ def _normalize_webmanus_consult_result(
     }
 
 
-@router.get("/workers")
+@router.get(
+    "/workers",
+    response_model=WorkerListResponse,
+    responses={200: {"description": "List of workers"}},
+)
 def list_workers(
     request: Request,
     response: Response,
-    q: str = Query(default="", max_length=200),
-    capability: str | None = Query(default=None, max_length=80),
-    pricing: str | None = Query(default=None, max_length=40),
-    min_score: float = Query(default=0.0, ge=0.0, le=10.0),
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    q: str = Query(default="", max_length=200, description="Search query", examples=["automation"]),
+    capability: str | None = Query(default=None, max_length=80, description="Filter by capability"),
+    pricing: str | None = Query(default=None, max_length=40, description="Filter by pricing tier"),
+    min_score: float = Query(default=0.0, ge=0.0, le=10.0, description="Minimum score"),
+    limit: int = Query(default=50, ge=1, le=200, description="Results limit"),
+    offset: int = Query(default=0, ge=0, description="Result offset"),
 ) -> dict:
     repo = get_webmanus_repo(request)
     total, items = repo.search_page(
@@ -95,7 +106,14 @@ def list_workers(
     return {"total": total, "items": items}
 
 
-@router.get("/workers/{slug}")
+@router.get(
+    "/workers/{slug}",
+    response_model=WorkerResponse,
+    responses={
+        200: {"description": "Worker details"},
+        404: {"description": "Worker not found"},
+    },
+)
 def get_worker(slug: str, request: Request, response: Response) -> dict:
     repo = get_webmanus_repo(request)
     agent = repo.get_by_slug(slug)
@@ -105,14 +123,28 @@ def get_worker(slug: str, request: Request, response: Response) -> dict:
     return batch_inject([agent])[0]
 
 
-@router.get("/capabilities")
+@router.get(
+    "/capabilities",
+    response_model=CapabilityListResponse,
+    responses={200: {"description": "List of available capabilities"}},
+)
 def list_capabilities(request: Request, response: Response) -> list[str]:
     repo = get_webmanus_repo(request)
     response.headers["Cache-Control"] = "public, max-age=3600"
     return repo.get_all_capabilities()
 
 
-@router.post("/consult")
+@router.post(
+    "/consult",
+    response_model=WebManusConsultResponse,
+    responses={
+        200: {"description": "Consultation results"},
+        402: {"description": "Budget exceeded"},
+        429: {"description": "Rate limited"},
+        502: {"description": "Invalid model response"},
+        503: {"description": "Service unavailable"},
+    },
+)
 def consult(payload: WebManusConsultRequest, request: Request) -> JSONResponse:
     if not settings.enable_ai_selector:
         raise HTTPException(status_code=404, detail="AI selector disabled")
@@ -223,7 +255,15 @@ def consult(payload: WebManusConsultRequest, request: Request) -> JSONResponse:
     )
 
 
-@router.post("/consult/stream")
+@router.post(
+    "/consult/stream",
+    responses={
+        200: {"description": "Server-Sent Events stream", "content": {"text/event-stream": {}}},
+        402: {"description": "Budget exceeded"},
+        429: {"description": "Rate limited"},
+        503: {"description": "Service unavailable"},
+    },
+)
 def consult_stream(payload: WebManusConsultRequest, request: Request) -> StreamingResponse:
     if not settings.enable_ai_selector:
         raise HTTPException(status_code=404, detail="AI selector disabled")

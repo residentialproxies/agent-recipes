@@ -48,7 +48,9 @@ export default function AgentDetail({ agent }: { agent: Agent }) {
         </Button>
 
         <div className="mb-8">
-          <div className={`mb-4 h-1 w-20 ${getCategoryColor(agent.category)}`} />
+          <div
+            className={`mb-4 h-1 w-20 ${getCategoryColor(agent.category)}`}
+          />
           <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="mb-2 text-4xl font-bold">{agent.name}</h1>
@@ -58,7 +60,11 @@ export default function AgentDetail({ agent }: { agent: Agent }) {
             </div>
             <div className="flex gap-2">
               <Button asChild>
-                <a href={agent.github_url} target="_blank" rel="noopener noreferrer">
+                <a
+                  href={agent.github_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   <ExternalLink className="mr-2 h-4 w-4" />
                   View on GitHub
                 </a>
@@ -83,7 +89,8 @@ export default function AgentDetail({ agent }: { agent: Agent }) {
             )}
             <Badge variant="outline">
               <Calendar className="mr-1 h-3 w-3" />
-              Updated {agent.updated_at ? formatDate(agent.updated_at) : "Unknown"}
+              Updated{" "}
+              {agent.updated_at ? formatDate(agent.updated_at) : "Unknown"}
             </Badge>
           </div>
         </div>
@@ -216,31 +223,63 @@ export default function AgentDetail({ agent }: { agent: Agent }) {
                 <CardTitle>Quick Links</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Button asChild variant="outline" className="w-full justify-start">
-                  <a href={agent.github_url} target="_blank" rel="noopener noreferrer">
+                <Button
+                  asChild
+                  variant="outline"
+                  className="w-full justify-start"
+                >
+                  <a
+                    href={agent.github_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     <GitFork className="mr-2 h-4 w-4" />
                     View Source Code
                   </a>
                 </Button>
                 {agent.codespaces_url && (
-                  <Button asChild variant="outline" className="w-full justify-start">
-                    <a href={agent.codespaces_url} target="_blank" rel="noopener noreferrer">
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="w-full justify-start"
+                  >
+                    <a
+                      href={agent.codespaces_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       <ExternalLink className="mr-2 h-4 w-4" />
                       Open in Codespaces
                     </a>
                   </Button>
                 )}
                 {agent.colab_url && (
-                  <Button asChild variant="outline" className="w-full justify-start">
-                    <a href={agent.colab_url} target="_blank" rel="noopener noreferrer">
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="w-full justify-start"
+                  >
+                    <a
+                      href={agent.colab_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       <ExternalLink className="mr-2 h-4 w-4" />
                       Open in Colab
                     </a>
                   </Button>
                 )}
                 {readmeUrl && (
-                  <Button asChild variant="outline" className="w-full justify-start">
-                    <a href={readmeUrl} target="_blank" rel="noopener noreferrer">
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="w-full justify-start"
+                  >
+                    <a
+                      href={readmeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       <ExternalLink className="mr-2 h-4 w-4" />
                       View README
                     </a>
@@ -254,4 +293,3 @@ export default function AgentDetail({ agent }: { agent: Agent }) {
     </main>
   );
 }
-

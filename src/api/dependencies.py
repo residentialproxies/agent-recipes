@@ -13,6 +13,7 @@ from src.api.state import AppState
 from src.config import settings
 from src.data_store import AgentsSnapshot, get_search_engine, load_agents
 from src.repository import AgentRepo
+from src.repository.users import get_user_repo
 
 
 def get_state(request: Request) -> AppState:
@@ -52,3 +53,7 @@ def get_ai_budget(request: Request):
 
 def get_rate_limiter(request: Request):
     return request.app.state.rate_limiter
+
+
+def get_user_repo_for_request(request: Request):
+    return request.app.state.user_repo or get_user_repo()

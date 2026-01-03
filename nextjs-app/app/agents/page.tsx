@@ -36,7 +36,9 @@ export const revalidate = 3600;
 
 export function generateMetadata(): Metadata {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-  const canonical = siteUrl ? new URL("/agents/", siteUrl).toString() : undefined;
+  const canonical = siteUrl
+    ? new URL("/agents/", siteUrl).toString()
+    : undefined;
   return {
     alternates: canonical ? { canonical } : undefined,
     robots: { index: true, follow: true },
@@ -48,7 +50,8 @@ export default async function AgentsPage({
 }: {
   searchParams?: SearchParams;
 }) {
-  const isStaticExport = (process.env.NEXT_OUTPUT || "").toLowerCase() === "export";
+  const isStaticExport =
+    (process.env.NEXT_OUTPUT || "").toLowerCase() === "export";
   if (isStaticExport) {
     const allAgents = await loadRepoAgents().catch(() => [] as Agent[]);
     const filters = computeFiltersFromAgents(allAgents);
@@ -108,7 +111,9 @@ export default async function AgentsPage({
       <div className="container mx-auto px-4 py-10 space-y-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-4xl font-bold tracking-tight">Explore Agents</h1>
+            <h1 className="text-4xl font-bold tracking-tight">
+              Explore Agents
+            </h1>
             <p className="text-muted-foreground">
               Search and filter across {total} agents
             </p>
@@ -123,7 +128,11 @@ export default async function AgentsPage({
             <CardTitle className="text-lg">Search & Filters</CardTitle>
           </CardHeader>
           <CardContent>
-            <form action="/agents" method="get" className="grid gap-3 md:grid-cols-12">
+            <form
+              action="/agents"
+              method="get"
+              className="grid gap-3 md:grid-cols-12"
+            >
               <input type="hidden" name="page" value="1" />
               <input type="hidden" name="page_size" value={String(pageSize)} />
 
@@ -187,7 +196,13 @@ export default async function AgentsPage({
                   className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">Any</option>
-                  {(filters?.complexities || ["beginner", "intermediate", "advanced"]).map((c) => (
+                  {(
+                    filters?.complexities || [
+                      "beginner",
+                      "intermediate",
+                      "advanced",
+                    ]
+                  ).map((c) => (
                     <option key={c} value={String(c)}>
                       {String(c)}
                     </option>

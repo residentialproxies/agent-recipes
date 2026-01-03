@@ -46,7 +46,9 @@ export async function loadRepoAgents(): Promise<Agent[]> {
       const content = await fs.readFile(filePath, "utf8");
       const parsed = JSON.parse(content);
       const items: unknown[] = Array.isArray(parsed) ? parsed : [];
-      return items.map((a) => normalizeAgent(a as Partial<Agent>)).filter((a) => Boolean(a.id));
+      return items
+        .map((a) => normalizeAgent(a as Partial<Agent>))
+        .filter((a) => Boolean(a.id));
     })();
   }
   return agentsPromise;
@@ -62,7 +64,9 @@ export async function loadRepoAgentById(id: string): Promise<Agent | null> {
   return agents.find((a) => a.id === id) || null;
 }
 
-export function computeFiltersFromAgents(agents: Agent[]): AgentFiltersResponse {
+export function computeFiltersFromAgents(
+  agents: Agent[],
+): AgentFiltersResponse {
   const categories = new Set<string>();
   const frameworks = new Set<string>();
   const providers = new Set<string>();
@@ -84,4 +88,3 @@ export function computeFiltersFromAgents(agents: Agent[]): AgentFiltersResponse 
     complexities: Array.from(complexities).sort(),
   };
 }
-

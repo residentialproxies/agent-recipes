@@ -8,10 +8,39 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+
+# Mock problematic dependencies before any imports
+def _create_psycopg_mock():
+    """Create a comprehensive psycopg mock."""
+    mock_psycopg = MagicMock()
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = [1]
+    mock_cursor.fetchall.return_value = []
+    mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+    mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+    mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+    mock_conn.__exit__ = MagicMock(return_value=False)
+    mock_psycopg.connect.return_value = mock_conn
+
+    # Add rows module
+    mock_rows = MagicMock()
+    mock_rows.row_factory = MagicMock()
+    mock_psycopg.rows = mock_rows
+    mock_psycopg.pgconn = MagicMock()
+
+    return mock_psycopg
+
+
+sys.modules["psycopg"] = _create_psycopg_mock()
+sys.modules["psycopg.pgconn"] = MagicMock()
+sys.modules["psycopg.rows"] = MagicMock()
 
 
 @pytest.fixture

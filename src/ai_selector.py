@@ -20,11 +20,13 @@ from collections.abc import Iterable
 from typing import Any
 
 from src.cache import CacheEntry, SQLiteBudget, SQLiteCache  # noqa: F401
+from src.circuit_breaker import CircuitBreakerOpenError, get_anthropic_breaker
 from src.config import settings
+from src.exceptions import BudgetExceededError
 from src.security.validators import ValidationError, sanitize_llm_output
 
 
-class AISelectorError(RuntimeError):
+class AISelectorError(BudgetExceededError):
     """Exception raised for AI selector errors."""
 
     pass
@@ -137,13 +139,20 @@ class AnthropicService:
         model = model or self._model
         timeout = timeout or settings.llm_timeout_seconds
 
-        try:
+        breaker = get_anthropic_breaker()
+
+        def _do_create():
             return self.client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
                 messages=messages,
                 timeout=timeout,
             )
+
+        try:
+            return breaker.call(_do_create)
+        except CircuitBreakerOpenError as e:
+            raise HTTPException(status_code=503, detail=f"Circuit breaker open: {e}") from e
         except self._get_auth_error() as e:
             raise HTTPException(status_code=503, detail=self.ERROR_MESSAGES["auth"]) from e
         except self._get_rate_limit_error() as e:
@@ -176,17 +185,27 @@ class AnthropicService:
 
         Raises:
             HTTPException: For API errors with appropriate status codes.
+            CircuitBreakerOpenError: If circuit is open.
         """
+        from fastapi import HTTPException
 
         model = model or self._model
         timeout = timeout or settings.llm_timeout_seconds
 
-        return self.client.messages.stream(
-            model=model,
-            max_tokens=max_tokens,
-            messages=messages,
-            timeout=timeout,
-        )
+        breaker = get_anthropic_breaker()
+
+        def _do_stream():
+            return self.client.messages.stream(
+                model=model,
+                max_tokens=max_tokens,
+                messages=messages,
+                timeout=timeout,
+            )
+
+        try:
+            return breaker.call(_do_stream)
+        except CircuitBreakerOpenError as e:
+            raise HTTPException(status_code=503, detail=f"Circuit breaker open: {e}") from e
 
     def extract_text(self, response: Any) -> str:
         """
@@ -516,7 +535,7 @@ def make_cache_key(*, model: str, query: str, candidate_ids: Iterable[str]) -> s
     Uses semantic normalization to allow similar queries to share cache:
     - "best coding agent" and "top coding assistant" may share cache
     - Query normalization removes filler words and modifiers
-    - Candidate IDs are included to ensure different search results get different cache
+    - Candidate IDs are sorted and JSON-encoded to prevent collisions
 
     Args:
         model: LLM model identifier
@@ -526,9 +545,15 @@ def make_cache_key(*, model: str, query: str, candidate_ids: Iterable[str]) -> s
     Returns:
         SHA256 hash as cache key
     """
+    import json
+
     normalized_query = normalize_query_for_cache(query)
-    joined = ",".join([c for c in candidate_ids if c])
-    return _sha256(f"{model}\n{normalized_query}\n{joined}")
+    # Sort and filter IDs, then use JSON to encode properly
+    # This prevents collisions from IDs containing delimiters like commas
+    sorted_ids = sorted([c for c in candidate_ids if c])
+    ids_hash = _sha256(json.dumps(sorted_ids, sort_keys=True, separators=(",", ":")))
+    # Combine model, query, and candidate IDs hash for final cache key
+    return _sha256(f"{model}\n{normalized_query}\n{ids_hash}")
 
 
 # FileTTLCache is now an alias to SQLiteCache for backward compatibility

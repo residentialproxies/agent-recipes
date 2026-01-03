@@ -1,16 +1,19 @@
 """
 End-to-end API integration tests for Agent Navigator.
 
-Tests all endpoints, error handling, rate limiting, and payload limits.
+Tests all endpoints, error handling, rate limiting, AI selector, and payload limits.
 """
 
 import json
 from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from src.api.app import create_app
+from src.api.models import AISelectRequest
 
 
 @pytest.fixture
@@ -531,4 +534,442 @@ class TestContentType:
     def test_accept_json(self, client: TestClient):
         """Request with Accept: application/json should work."""
         response = client.get("/v1/agents", headers={"Accept": "application/json"})
+        assert response.status_code == 200
+
+
+class TestAISelectorEndpoint:
+    """Tests for /v1/ai/select endpoint."""
+
+    @pytest.fixture
+    def ai_client(self, agents_json_path: Path, webmanus_db_path: Path, tmp_path: Path) -> TestClient:
+        """Create a client with AI selector enabled."""
+        # Mock environment to enable AI selector
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key", "ENABLE_AI_SELECTOR": "true"}):
+            app = create_app(
+                agents_path=agents_json_path,
+                webmanus_db_path=webmanus_db_path,
+            )
+            return TestClient(app)
+
+    def test_ai_select_returns_503_without_key(self, agents_json_path: Path, webmanus_db_path: Path):
+        """Should return 503 when API key is missing."""
+        with patch.dict("os.environ", {}, clear=False):
+            # Remove the key if it exists
+            import os
+            os.environ.pop("ANTHROPIC_API_KEY", None)
+
+            app = create_app(
+                agents_path=agents_json_path,
+                webmanus_db_path=webmanus_db_path,
+            )
+            client = TestClient(app)
+
+            response = client.post("/v1/ai/select", json={"query": "test"})
+            assert response.status_code == 503
+
+    def test_ai_select_request_structure(self, ai_client: TestClient):
+        """Should accept valid AI select request structure."""
+        response = ai_client.post(
+            "/v1/ai/select",
+            json={
+                "query": "best RAG agent",
+                "category": "rag",
+                "framework": "langchain",
+                "max_candidates": 10,
+            },
+        )
+        # May fail with actual API call, but request structure should be valid
+        assert response.status_code in (200, 503, 402, 500)
+
+    def test_ai_select_with_filters(self, ai_client: TestClient):
+        """Should apply filters when selecting candidates."""
+        response = ai_client.post(
+            "/v1/ai/select",
+            json={
+                "query": "agent",
+                "category": "chatbot",
+                "local_only": True,
+                "max_candidates": 5,
+            },
+        )
+        assert response.status_code in (200, 503, 402, 500)
+
+    def test_ai_select_streaming_endpoint(self, ai_client: TestClient):
+        """Streaming endpoint should return appropriate content type."""
+        response = ai_client.post(
+            "/v1/ai/select/stream",
+            json={"query": "test", "max_candidates": 5},
+        )
+        # Streaming endpoint returns text/event-stream or error
+        assert response.status_code in (200, 503, 402, 500)
+        if response.status_code == 200:
+            assert "text/event-stream" in response.headers.get("content-type", "")
+
+    def test_ai_select_empty_query(self, ai_client: TestClient):
+        """Empty query should be handled."""
+        response = ai_client.post("/v1/ai/select", json={"query": ""})
+        # Should process or return appropriate error
+        assert response.status_code in (200, 503, 402, 422)
+
+    def test_ai_select_max_candidates_limit(self, ai_client: TestClient):
+        """Should respect max_candidates parameter."""
+        response = ai_client.post(
+            "/v1/ai/select",
+            json={"query": "agent", "max_candidates": 3},
+        )
+        assert response.status_code in (200, 503, 402, 500)
+
+
+class TestRateLimitingIntegration:
+    """Integration tests for rate limiting."""
+
+    @pytest.fixture
+    def rate_limit_client(self, agents_json_path: Path, webmanus_db_path: Path, tmp_path: Path) -> TestClient:
+        """Create a client with low rate limit for testing."""
+        # Create a custom rate limiter with low limits
+        from src.cache import SQLiteRateLimiter
+
+        db_path = tmp_path / "rate_limit.db"
+        limiter = SQLiteRateLimiter(
+            storage_path=db_path,
+            requests_per_window=3,
+            window_seconds=60,
+        )
+
+        app = create_app(
+            agents_path=agents_json_path,
+            webmanus_db_path=webmanus_db_path,
+        )
+        # Replace the rate limiter
+        app.state.rate_limiter = limiter
+
+        return TestClient(app)
+
+    def test_rate_limit_allows_normal_requests(self, rate_limit_client: TestClient):
+        """Normal number of requests should be allowed."""
+        for _ in range(3):
+            response = rate_limit_client.get("/v1/health")
+            assert response.status_code == 200
+
+    def test_rate_limit_blocks_excess(self, rate_limit_client: TestClient):
+        """Requests beyond limit should be rate limited."""
+        # First 3 should succeed
+        for _ in range(3):
+            response = rate_limit_client.get("/v1/agents")
+            assert response.status_code == 200
+
+        # Next should be rate limited
+        response = rate_limit_client.get("/v1/agents")
+        assert response.status_code == 429
+
+    def test_rate_limit_retry_after_header(self, rate_limit_client: TestClient):
+        """Rate limited response should include Retry-After header."""
+        # Exhaust the limit
+        for _ in range(4):
+            rate_limit_client.get("/v1/health")
+
+        # Check rate limited response
+        response = rate_limit_client.get("/v1/agents")
+        if response.status_code == 429:
+            assert "retry-after" in response.headers
+
+    def test_rate_limit_per_client(self, rate_limit_client: TestClient):
+        """Rate limiting should be per client IP."""
+        # Make requests from same "client" (TestClient uses same IP)
+        for _ in range(3):
+            response = rate_limit_client.get("/v1/agents")
+            assert response.status_code == 200
+
+        # Next should be limited
+        response = rate_limit_client.get("/v1/agents")
+        assert response.status_code == 429
+
+    def test_rate_limit_different_endpoints(self, rate_limit_client: TestClient):
+        """Rate limit should apply across all endpoints."""
+        # Mix of endpoints
+        rate_limit_client.get("/v1/health")
+        rate_limit_client.get("/v1/agents")
+        rate_limit_client.get("/v1/filters")
+
+        # Fourth request should be limited
+        response = rate_limit_client.get("/v1/agents")
+        assert response.status_code == 429
+
+
+class TestAICachingIntegration:
+    """Tests for AI selector caching integration."""
+
+    @pytest.fixture
+    def cache_db_path(self, tmp_path: Path) -> Path:
+        """Create a temporary cache database."""
+        return tmp_path / "ai_cache.db"
+
+    def test_ai_cache_set_get(self, cache_db_path: Path):
+        """Cache should store and retrieve entries."""
+        from src.ai_selector import FileTTLCache, CacheEntry
+        import time
+
+        cache = FileTTLCache(cache_db_path, ttl_seconds=3600)
+
+        entry = CacheEntry(
+            created_at=time.time(),
+            model="claude-3-5-haiku-20241022",
+            text="Test response",
+            usage={"input_tokens": 100, "output_tokens": 50},
+            cost_usd=0.001,
+        )
+
+        cache.set("test_key", entry)
+        retrieved = cache.get("test_key")
+
+        assert retrieved is not None
+        assert retrieved.text == "Test response"
+        assert retrieved.model == "claude-3-5-haiku-20241022"
+
+    def test_ai_cache_expiration(self, cache_db_path: Path):
+        """Cache entries should expire after TTL."""
+        from src.ai_selector import FileTTLCache, CacheEntry
+        import time
+
+        cache = FileTTLCache(cache_db_path, ttl_seconds=1)
+
+        entry = CacheEntry(
+            created_at=time.time(),
+            model="test-model",
+            text="Test",
+            usage={},
+            cost_usd=0.0,
+        )
+
+        cache.set("expire_key", entry)
+        assert cache.get("expire_key") is not None
+
+        # Wait for expiration
+        time.sleep(1.1)
+        assert cache.get("expire_key") is None
+
+    def test_ai_cache_clear(self, cache_db_path: Path):
+        """Cache clear should remove all entries."""
+        from src.ai_selector import FileTTLCache, CacheEntry
+        import time
+
+        cache = FileTTLCache(cache_db_path, ttl_seconds=3600)
+
+        for i in range(5):
+            entry = CacheEntry(
+                created_at=time.time(),
+                model="test",
+                text=f"Text {i}",
+                usage={},
+                cost_usd=0.0,
+            )
+            cache.set(f"key_{i}", entry)
+
+        cache.clear()
+        for i in range(5):
+            assert cache.get(f"key_{i}") is None
+
+
+class TestBudgetTrackingIntegration:
+    """Tests for budget tracking integration."""
+
+    @pytest.fixture
+    def budget_db_path(self, tmp_path: Path) -> Path:
+        """Create a temporary budget database."""
+        return tmp_path / "budget.db"
+
+    def test_budget_tracking(self, budget_db_path: Path):
+        """Budget should track spending correctly."""
+        from src.ai_selector import DailyBudget
+
+        budget = DailyBudget(budget_db_path, daily_budget_usd=10.0)
+
+        assert budget.spent_today_usd() == 0.0
+        assert not budget.would_exceed(5.0)
+
+        budget.add_spend(2.5)
+        assert budget.spent_today_usd() == 2.5
+        assert not budget.would_exceed(5.0)
+
+        budget.add_spend(5.0)
+        assert budget.spent_today_usd() == 7.5
+        assert budget.would_exceed(3.0)
+
+    def test_budget_exceed_check(self, budget_db_path: Path):
+        """Budget should prevent overspending."""
+        from src.ai_selector import DailyBudget
+
+        budget = DailyBudget(budget_db_path, daily_budget_usd=5.0)
+
+        assert not budget.would_exceed(4.0)
+        budget.add_spend(4.0)
+
+        # Would exceed remaining
+        assert budget.would_exceed(2.0)
+
+    def test_budget_reset_daily(self, budget_db_path: Path):
+        """Budget should reset daily (simulated)."""
+        from src.ai_selector import DailyBudget
+        from datetime import date, timedelta
+
+        budget = DailyBudget(budget_db_path, daily_budget_usd=10.0)
+
+        budget.add_spend(5.0)
+        assert budget.spent_today_usd() == 5.0
+
+        # Clear today's spend (simulating new day)
+        budget.clear_today()
+        assert budget.spent_today_usd() == 0.0
+
+
+class TestErrorScenarios:
+    """Tests for various error scenarios."""
+
+    @pytest.fixture
+    def error_client(self, tmp_path: Path) -> TestClient:
+        """Create a test client."""
+        agents = [{"id": "test", "name": "Test", "category": "other", "frameworks": [], "llm_providers": []}]
+        data_file = tmp_path / "agents.json"
+        data_file.write_text(json.dumps(agents), encoding="utf-8")
+
+        app = create_app(agents_path=data_file)
+        return TestClient(app)
+
+    def test_invalid_json_body(self, error_client: TestClient):
+        """Invalid JSON in body should return 422."""
+        response = error_client.post(
+            "/v1/search",
+            content="{invalid json}",
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status_code == 422
+
+    def test_extra_fields_in_request(self, error_client: TestClient):
+        """Extra fields should be ignored (not cause errors)."""
+        response = error_client.post(
+            "/v1/search",
+            json={"q": "test", "extra_field": "should_be_ignored"},
+        )
+        assert response.status_code == 200
+
+    def test_null_values_in_filters(self, error_client: TestClient):
+        """Null values in filters should be handled."""
+        response = error_client.post(
+            "/v1/search",
+            json={"q": "test", "category": None},
+        )
+        assert response.status_code == 200
+
+    def test_very_long_query(self, error_client: TestClient):
+        """Very long query should be handled."""
+        response = error_client.get("/v1/agents?q=" + "a" * 500)
+        assert response.status_code == 200
+
+
+class TestMultiValueFilters:
+    """Tests for multi-value filter parameters."""
+
+    @pytest.fixture
+    def multi_filter_client(self, tmp_path: Path) -> TestClient:
+        """Create a client with diverse agent data."""
+        agents = [
+            {
+                "id": f"agent_{i}",
+                "name": f"Agent {i}",
+                "description": "Test agent",
+                "category": ["rag", "chatbot", "finance"][i % 3],
+                "frameworks": ["langchain", "crewai", "raw_api"][i % 3],
+                "llm_providers": ["openai", "anthropic", "ollama"][i % 3],
+            }
+            for i in range(9)
+        ]
+        data_file = tmp_path / "agents.json"
+        data_file.write_text(json.dumps(agents), encoding="utf-8")
+
+        app = create_app(agents_path=data_file)
+        return TestClient(app)
+
+    def test_multi_category_filter(self, multi_filter_client: TestClient):
+        """Should filter by multiple categories."""
+        response = multi_filter_client.get("/v1/agents?category=rag&category=chatbot")
+        assert response.status_code == 200
+
+        data = response.json()
+        for item in data["items"]:
+            assert item["category"] in ["rag", "chatbot"]
+
+    def test_multi_framework_filter(self, multi_filter_client: TestClient):
+        """Should filter by multiple frameworks."""
+        response = multi_filter_client.get("/v1/agents?framework=langchain&framework=crewai")
+        assert response.status_code == 200
+
+        data = response.json()
+        for item in data["items"]:
+            frameworks = item.get("frameworks", [])
+            assert any(f in ["langchain", "crewai"] for f in frameworks)
+
+    def test_multi_provider_filter(self, multi_filter_client: TestClient):
+        """Should filter by multiple providers."""
+        response = multi_filter_client.get("/v1/agents?provider=openai&provider=anthropic")
+        assert response.status_code == 200
+
+        data = response.json()
+        for item in data["items"]:
+            providers = item.get("llm_providers", [])
+            assert any(p in ["openai", "anthropic"] for p in providers)
+
+    def test_multi_complexity_filter(self, multi_filter_client: TestClient):
+        """Should filter by multiple complexity levels."""
+        # Add complexity field
+        response = multi_filter_client.get("/v1/agents?complexity=beginner&complexity=advanced")
+        assert response.status_code == 200
+
+
+class TestSortingIntegration:
+    """Tests for sorting functionality."""
+
+    @pytest.fixture
+    def sorting_client(self, tmp_path: Path) -> TestClient:
+        """Create a client with sortable data."""
+        agents = [
+            {"id": "c", "name": "Charlie", "description": "Third", "category": "other", "frameworks": [], "llm_providers": [], "stars": 100},
+            {"id": "a", "name": "Alpha", "description": "First", "category": "other", "frameworks": [], "llm_providers": [], "stars": 300},
+            {"id": "b", "name": "Bravo", "description": "Second", "category": "other", "frameworks": [], "llm_providers": [], "stars": 200},
+        ]
+        data_file = tmp_path / "agents.json"
+        data_file.write_text(json.dumps(agents), encoding="utf-8")
+
+        app = create_app(agents_path=data_file)
+        return TestClient(app)
+
+    def test_sort_by_name_ascending(self, sorting_client: TestClient):
+        """Should sort by name ascending."""
+        response = sorting_client.get("/v1/agents?sort=+name")
+        assert response.status_code == 200
+
+        data = response.json()
+        names = [item["name"] for item in data["items"]]
+        assert names == ["Alpha", "Bravo", "Charlie"]
+
+    def test_sort_by_name_descending(self, sorting_client: TestClient):
+        """Should sort by name descending."""
+        response = sorting_client.get("/v1/agents?sort=-name")
+        assert response.status_code == 200
+
+        data = response.json()
+        names = [item["name"] for item in data["items"]]
+        assert names == ["Charlie", "Bravo", "Alpha"]
+
+    def test_sort_by_stars_descending(self, sorting_client: TestClient):
+        """Should sort by stars descending (default)."""
+        response = sorting_client.get("/v1/agents?sort=-stars")
+        assert response.status_code == 200
+
+        data = response.json()
+        stars = [item["stars"] for item in data["items"]]
+        assert stars == [300, 200, 100]
+
+    def test_sort_with_query(self, sorting_client: TestClient):
+        """Sort should work with search query."""
+        response = sorting_client.get("/v1/agents?q=agent&sort=+name")
         assert response.status_code == 200

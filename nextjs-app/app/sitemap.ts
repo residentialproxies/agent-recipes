@@ -21,7 +21,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
-  const isStaticExport = (process.env.NEXT_OUTPUT || "").toLowerCase() === "export";
+  const isStaticExport =
+    (process.env.NEXT_OUTPUT || "").toLowerCase() === "export";
 
   // Best-effort: include agent detail pages for crawlability.
   try {
@@ -30,7 +31,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       : await (async () => {
           const pageSize = 100;
           const first = await getAgents({ page: 1, page_size: pageSize });
-          const totalPages = Math.max(1, Math.ceil((first.total || 0) / pageSize));
+          const totalPages = Math.max(
+            1,
+            Math.ceil((first.total || 0) / pageSize),
+          );
 
           const pages = [first];
           for (let p = 2; p <= totalPages; p += 1) {
