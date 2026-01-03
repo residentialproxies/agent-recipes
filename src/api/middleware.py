@@ -23,7 +23,7 @@ def get_client_ip(request: Request) -> str:
     if not settings.trust_proxy_headers:
         return client_host
 
-    trusted = set([ip.strip() for ip in (settings.trusted_proxy_ips or set()) if ip and ip.strip()])
+    trusted = {ip.strip() for ip in (settings.trusted_proxy_ips or set()) if ip and ip.strip()}
     trust_all = "*" in trusted
     if not (trust_all or client_host in trusted):
         # Do not trust forwarded headers from untrusted sources.

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 AFFILIATE_LINKS: dict[str, str] = {
     # slug -> affiliate URL
     # "taskade-ai": "https://taskade.com?ref=webmanus",
@@ -66,4 +65,3 @@ def batch_inject(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
         List of agent dictionaries with affiliate_url injected.
     """
     return [inject_affiliate(a) for a in (agents or [])]
-

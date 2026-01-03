@@ -4,7 +4,10 @@ Shared helpers for pSEO page generation.
 
 from __future__ import annotations
 
-from typing import Callable
+import logging
+from collections.abc import Callable
+
+logger = logging.getLogger(__name__)
 
 
 def sort_agents(agents: list[dict], sort_by: str = "stars") -> list[dict]:
@@ -33,7 +36,7 @@ def filter_agents(agents: list[dict], criteria: Callable[[dict], bool]) -> list[
         try:
             if criteria(a):
                 out.append(a)
-        except Exception:
+        except Exception as exc:
+            logger.debug("Ignoring agent during filter (criteria error): %s", exc)
             continue
     return out
-

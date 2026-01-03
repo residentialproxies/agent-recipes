@@ -6,7 +6,6 @@ particularly for LIKE clauses where wildcard characters need special handling.
 """
 
 import re
-from typing import Optional
 
 
 def escape_like_pattern(pattern: str, escape_char: str = "\\") -> str:
@@ -58,7 +57,7 @@ def escape_like_pattern(pattern: str, escape_char: str = "\\") -> str:
 
 
 def build_like_clause(
-    column: str, pattern: str, escape_char: str = "\\", *, case_sensitive: bool = False
+    column: str, pattern: str, escape_char: str = "\\", *, _case_sensitive: bool = False
 ) -> tuple[str, list]:
     """
     Build a safe SQL LIKE clause with escaped user input.
@@ -104,7 +103,7 @@ def build_like_clause(
     return sql, [like_pattern]
 
 
-def validate_search_input(query: str, *, max_length: int = 200, allowed_chars: Optional[set] = None) -> str:
+def validate_search_input(query: str, *, max_length: int = 200, allowed_chars: set | None = None) -> str:
     """
     Validate and sanitize search query input.
 
@@ -137,8 +136,7 @@ def validate_search_input(query: str, *, max_length: int = 200, allowed_chars: O
     )
 
     # Validate against allowed characters if specified
-    if allowed_chars is not None:
-        if not all(char in allowed_chars for char in query):
-            raise ValueError("Query contains disallowed characters")
+    if allowed_chars is not None and not all(char in allowed_chars for char in query):
+        raise ValueError("Query contains disallowed characters")
 
     return query.strip()

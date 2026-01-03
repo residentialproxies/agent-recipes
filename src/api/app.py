@@ -4,33 +4,30 @@ FastAPI application factory.
 
 from __future__ import annotations
 
-import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from src.ai_selector import DailyBudget, FileTTLCache
+from src.api.middleware import setup_compression, setup_cors, setup_request_size_limit, setup_security_headers
+from src.api.observability import ObservabilityMiddleware, generate_request_id, get_request_id
+from src.api.routes import agents as agents_routes
+from src.api.routes import ai as ai_routes
+from src.api.routes import webmanus as webmanus_routes
+from src.api.state import AppState
 from src.config import settings
 from src.data_store import get_search_engine, load_agents
 from src.repository import AgentRepo
 from src.security.rate_limit import RateLimitConfig, get_rate_limiter
 from src.security.validators import ValidationError
 
-from src.api.middleware import setup_compression, setup_cors, setup_request_size_limit, setup_security_headers
-from src.api.observability import ObservabilityMiddleware
-from src.api.routes import agents as agents_routes
-from src.api.routes import ai as ai_routes
-from src.api.routes import webmanus as webmanus_routes
-from src.api.state import AppState
-
 
 def create_app(
     *,
-    agents_path: Optional[Path] = None,
-    webmanus_db_path: Optional[Path] = None,
+    agents_path: Path | None = None,
+    webmanus_db_path: Path | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -75,14 +72,21 @@ def create_app(
     app.include_router(ai_routes.router)
     app.include_router(webmanus_routes.router)
 
+    def _error_headers(request: Request) -> dict[str, str]:
+        # Ensure clients always get a request id for correlation, even on errors.
+        rid = request.headers.get("x-request-id") or get_request_id() or generate_request_id()
+        return {"X-Request-ID": rid, "Cache-Control": "no-store"}
+
     @app.exception_handler(ValidationError)
-    def _validation_error(_: Request, exc: ValidationError) -> JSONResponse:
-        return JSONResponse(status_code=400, content={"error": str(exc)})
+    def _validation_error(request: Request, exc: ValidationError) -> JSONResponse:
+        # Keep a stable envelope and add request correlation headers.
+        return JSONResponse(status_code=400, content={"error": str(exc)}, headers=_error_headers(request))
 
     @app.exception_handler(Exception)
-    def _unhandled(_: Request, exc: Exception) -> JSONResponse:
+    def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+        # ObservabilityMiddleware logs the exception; we still return a safe, stable envelope.
         _ = exc
-        return JSONResponse(status_code=500, content={"error": "internal_error"})
+        return JSONResponse(status_code=500, content={"error": "internal_error"}, headers=_error_headers(request))
 
     return app
 

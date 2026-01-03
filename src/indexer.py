@@ -25,20 +25,24 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import functools
 import hashlib
 import json
+import logging
 import os
 import re
 import subprocess
 import tempfile
-import time
-import functools
 import threading
+import time
 from collections import defaultdict
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional, Callable, Any, Dict
+from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Data quality utilities - support both direct and module imports
 try:
@@ -46,19 +50,15 @@ try:
         filter_low_value_tags,
         generate_seo_description,
         validate_agent_data,
-        generate_agent_tags,
     )
 except ImportError:
     from data_quality import (
         filter_low_value_tags,
         generate_seo_description,
         validate_agent_data,
-        generate_agent_tags,
     )
 
 try:
-    import anthropic  # type: ignore
-
     HAS_ANTHROPIC = True
 except Exception:
     HAS_ANTHROPIC = False
@@ -127,12 +127,13 @@ API_KEY_NAMES = (
 # Performance Monitoring Utilities
 # =============================================================================
 
+
 class PerformanceMetrics:
     """Track and report indexing performance metrics."""
 
     def __init__(self):
-        self.timings: Dict[str, list[float]] = defaultdict(list)
-        self.counters: Dict[str, int] = defaultdict(int)
+        self.timings: dict[str, list[float]] = defaultdict(list)
+        self.counters: dict[str, int] = defaultdict(int)
         self.start_time = time.time()
 
     def record_timing(self, operation: str, duration: float) -> None:
@@ -203,6 +204,7 @@ def timed(operation_name: str) -> Callable:
             finally:
                 duration = time.time() - start
                 _metrics.record_timing(operation_name, duration)
+
         return wrapper
 
     return decorator
@@ -211,6 +213,7 @@ def timed(operation_name: str) -> Callable:
 # =============================================================================
 # Rate Limiter for API Calls
 # =============================================================================
+
 
 class RateLimiter:
     """Token bucket rate limiter for API calls."""
@@ -271,12 +274,12 @@ class AgentMetadata:
     quick_start: str
     clone_command: str
     github_url: str
-    codespaces_url: Optional[str]
-    colab_url: Optional[str]
-    stars: Optional[int]
+    codespaces_url: str | None
+    colab_url: str | None
+    stars: int | None
     folder_path: str
     readme_relpath: str
-    updated_at: Optional[int]
+    updated_at: int | None
     api_keys: list[str]
     languages: list[str]
     tags: list[str]
@@ -332,12 +335,7 @@ def atomic_write_json(path: Path, data: Any) -> None:
 
     # Write to temp file in same directory (required for atomic rename)
     with tempfile.NamedTemporaryFile(
-        mode="w",
-        dir=path.parent,
-        delete=False,
-        encoding="utf-8",
-        suffix=".tmp",
-        prefix=".indexer_"
+        mode="w", dir=path.parent, delete=False, encoding="utf-8", suffix=".tmp", prefix=".indexer_"
     ) as tmp:
         json.dump(data, tmp, indent=2, ensure_ascii=False)
         tmp_name = tmp.name
@@ -347,7 +345,8 @@ def atomic_write_json(path: Path, data: Any) -> None:
 
 
 def _content_hash(content: str) -> str:
-    return hashlib.md5(content.encode("utf-8", errors="ignore")).hexdigest()[:12]
+    # Not used for security; used for stable cache keys.
+    return hashlib.sha256(content.encode("utf-8", errors="ignore")).hexdigest()[:12]
 
 
 def _safe_title_from_path(folder_path: str) -> str:
@@ -358,10 +357,44 @@ def _safe_title_from_path(folder_path: str) -> str:
 
 # Common English stopwords to filter out
 _STOPWORDS = {
-    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
-    "of", "with", "by", "from", "as", "is", "was", "are", "were", "be",
-    "been", "being", "have", "has", "had", "do", "does", "did", "will",
-    "would", "could", "should", "may", "might", "can", "this", "that",
+    "a",
+    "an",
+    "the",
+    "and",
+    "or",
+    "but",
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+    "of",
+    "with",
+    "by",
+    "from",
+    "as",
+    "is",
+    "was",
+    "are",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "could",
+    "should",
+    "may",
+    "might",
+    "can",
+    "this",
+    "that",
 }
 
 
@@ -418,7 +451,20 @@ def _extract_quick_start(readme: str, folder_path: str) -> str:
     code_blocks = re.findall(r"```(?:bash|shell|sh|zsh|powershell|cmd|text)?\n(.*?)```", readme, flags=re.S | re.I)
     for block in code_blocks[:10]:
         block_stripped = block.strip()
-        if any(k in block_stripped.lower() for k in ("pip install", "poetry install", "uv pip", "npm install", "pnpm install", "yarn install", "streamlit run", "python ", "python3 ")):
+        if any(
+            k in block_stripped.lower()
+            for k in (
+                "pip install",
+                "poetry install",
+                "uv pip",
+                "npm install",
+                "pnpm install",
+                "yarn install",
+                "streamlit run",
+                "python ",
+                "python3 ",
+            )
+        ):
             return block_stripped[:800]
 
     # Fallback: minimal clone + cd hint (most repos are monorepos).
@@ -586,10 +632,15 @@ def _normalize_llm_output(extracted: dict) -> dict:
     }
 
 
-def _git_last_modified_ts(repo_root: Path, relpath: str) -> Optional[int]:
+def _git_last_modified_ts(repo_root: Path, relpath: str) -> int | None:
+    import shutil
+
     try:
-        result = subprocess.run(
-            ["git", "-C", str(repo_root), "log", "-1", "--format=%ct", "--", relpath],
+        git = shutil.which("git")
+        if not git:
+            return None
+        result = subprocess.run(  # noqa: S603
+            [git, "-C", str(repo_root), "log", "-1", "--format=%ct", "--", relpath],
             capture_output=True,
             text=True,
             check=False,
@@ -602,7 +653,7 @@ def _git_last_modified_ts(repo_root: Path, relpath: str) -> Optional[int]:
     return None
 
 
-def _parse_github_owner_repo(repo_url: str) -> Optional[tuple[str, str]]:
+def _parse_github_owner_repo(repo_url: str) -> tuple[str, str] | None:
     m = re.match(r"^https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$", repo_url.strip())
     if not m:
         return None
@@ -612,6 +663,7 @@ def _parse_github_owner_repo(repo_url: str) -> Optional[tuple[str, str]]:
 # =============================================================================
 # Enhanced HTTP Cache for README and GitHub API
 # =============================================================================
+
 
 class HTTPCache:
     """Simple HTTP response cache with TTL support."""
@@ -624,7 +676,7 @@ class HTTPCache:
         """
         self.cache_path = cache_path
         self.ttl_seconds = ttl_seconds
-        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._cache: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
         self._load()
 
@@ -635,21 +687,18 @@ class HTTPCache:
                 data = json.loads(self.cache_path.read_text(encoding="utf-8"))
                 # Filter expired entries
                 now = time.time()
-                self._cache = {
-                    k: v for k, v in data.items()
-                    if now - v.get("timestamp", 0) < self.ttl_seconds
-                }
+                self._cache = {k: v for k, v in data.items() if now - v.get("timestamp", 0) < self.ttl_seconds}
             except Exception:
                 self._cache = {}
 
     def _save(self) -> None:
         """Save cache to disk."""
-        try:
-            atomic_write_json(self.cache_path, self._cache)
-        except Exception:
-            pass
+        from contextlib import suppress
 
-    def get(self, key: str) -> Optional[Any]:
+        with suppress(Exception):
+            atomic_write_json(self.cache_path, self._cache)
+
+    def get(self, key: str) -> Any | None:
         """Get cached value if exists and not expired."""
         with self._lock:
             entry = self._cache.get(key)
@@ -676,10 +725,7 @@ class HTTPCache:
         """Save cache to disk and cleanup expired entries."""
         with self._lock:
             now = time.time()
-            self._cache = {
-                k: v for k, v in self._cache.items()
-                if now - v.get("timestamp", 0) < self.ttl_seconds
-            }
+            self._cache = {k: v for k, v in self._cache.items() if now - v.get("timestamp", 0) < self.ttl_seconds}
             self._save()
 
 
@@ -688,7 +734,7 @@ _http_cache = HTTPCache()
 
 
 @timed("github_api_stars")
-def _fetch_github_repo_stars(owner: str, repo: str, *, token: Optional[str], use_cache: bool = True) -> Optional[int]:
+def _fetch_github_repo_stars(owner: str, repo: str, *, token: str | None, use_cache: bool = True) -> int | None:
     import urllib.request
 
     cache_key = f"stars:{owner}/{repo}"
@@ -706,9 +752,9 @@ def _fetch_github_repo_stars(owner: str, repo: str, *, token: Optional[str], use
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    req = urllib.request.Request(url, headers=headers)
+    req = urllib.request.Request(url, headers=headers)  # noqa: S310
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
             charset = resp.headers.get_content_charset() or "utf-8"
             payload = json.loads(resp.read().decode(charset, errors="replace"))
             stars = payload.get("stargazers_count")
@@ -725,7 +771,7 @@ class RepoIndexer:
         self,
         *,
         cache_path: Path = Path("data/.indexer_cache.json"),
-        anthropic_api_key: Optional[str] = None,
+        anthropic_api_key: str | None = None,
         enable_llm: bool = True,
         source_repo_url: str = "https://github.com/Shubhamsaboo/awesome-llm-apps",
         source_branch: str = "main",
@@ -746,7 +792,7 @@ class RepoIndexer:
         self.source_branch = source_branch
         self.max_readme_chars = max_readme_chars
         self.fetch_repo_stars = fetch_repo_stars
-        self._repo_stars_cache: dict[str, Optional[int]] = {}
+        self._repo_stars_cache: dict[str, int | None] = {}
         self.max_workers = max_workers
         self._lock = threading.Lock()
 
@@ -779,7 +825,8 @@ class RepoIndexer:
             normalized = {k: payload.get(k) for k in wanted}
             try:
                 self.cache[agent_id] = AgentMetadata(**normalized)  # type: ignore[arg-type]
-            except Exception:
+            except Exception as exc:
+                logger.debug("Skipping cache entry %s: %s", agent_id, exc)
                 continue
         print(f"Loaded {len(self.cache)} cached entries")
 
@@ -819,10 +866,12 @@ class RepoIndexer:
         # GitHub tree URL for this agent folder.
         github_url = f"{self.source_repo_url}/tree/{self.source_branch}/{folder_path}"
         # Codespaces can only open a repo; keep it stable and let Quick Start handle cd.
-        codespaces_url = f"https://codespaces.new/{self.source_repo_url.replace('https://github.com/', '')}?quickstart=1"
+        codespaces_url = (
+            f"https://codespaces.new/{self.source_repo_url.replace('https://github.com/', '')}?quickstart=1"
+        )
         return github_url, codespaces_url
 
-    def extract_agent(self, readme_path: Path, repo_root: Path) -> Optional[AgentMetadata]:
+    def extract_agent(self, readme_path: Path, repo_root: Path) -> AgentMetadata | None:
         """Extract a single agent (thread-safe for parallel execution)."""
         folder_path = str(readme_path.parent.relative_to(repo_root))
         readme_relpath = str(readme_path.relative_to(repo_root))
@@ -845,7 +894,6 @@ class RepoIndexer:
         folder = readme_path.parent
 
         extracted = None
-        mode = "HEUR"
 
         # Allow unit tests to force the LLM extraction path via mocking, even if
         # `self.enable_llm` is false due to missing optional dependencies.
@@ -862,9 +910,8 @@ class RepoIndexer:
         if should_try_llm:
             try:
                 extracted = _normalize_llm_output(self._extract_with_llm(readme_content, folder_path))
-                mode = "LLM"
                 _metrics.increment("llm_success")
-            except Exception as e:
+            except Exception:
                 _metrics.increment("llm_failures")
                 extracted = None
 
@@ -892,8 +939,7 @@ class RepoIndexer:
         tags = filter_low_value_tags(raw_tags)
 
         clone_command = (
-            f"git clone {self.source_repo_url}.git\n"
-            f"cd {self.source_repo_url.split('/')[-1]}/{folder_path}"
+            f"git clone {self.source_repo_url}.git\n" f"cd {self.source_repo_url.split('/')[-1]}/{folder_path}"
         )
 
         stars = None
@@ -957,11 +1003,7 @@ class RepoIndexer:
 
         return metadata
 
-    def _extract_batch(
-        self,
-        readme_paths: list[tuple[Path, Path]],
-        desc: str = "Extracting"
-    ) -> list[AgentMetadata]:
+    def _extract_batch(self, readme_paths: list[tuple[Path, Path]], desc: str = "Extracting") -> list[AgentMetadata]:
         """Extract a batch of agents in parallel."""
         agents: list[AgentMetadata] = []
 
@@ -1022,8 +1064,8 @@ class RepoIndexer:
         self,
         repo_path: Path,
         *,
-        limit: Optional[int] = None,
-        exclude_dirs: Optional[set[str]] = None,
+        limit: int | None = None,
+        exclude_dirs: set[str] | None = None,
     ) -> list[AgentMetadata]:
         exclude_dirs = exclude_dirs or {".git", "node_modules", "__pycache__", ".github", "docs", ".venv", "venv"}
 
@@ -1043,7 +1085,7 @@ class RepoIndexer:
         all_agents: list[AgentMetadata] = []
 
         for i in range(0, len(readme_pairs), batch_size):
-            batch = readme_pairs[i:i + batch_size]
+            batch = readme_pairs[i : i + batch_size]
             batch_num = i // batch_size + 1
             total_batches = (len(readme_pairs) + batch_size - 1) // batch_size
             agents = self._extract_batch(batch, desc=f"Batch {batch_num}/{total_batches}")
@@ -1073,18 +1115,24 @@ Examples:
 
   # Limit to first 50 agents (for testing)
   python3 src/indexer.py --repo /path/to/awesome-llm-apps --limit 50
-        """
+        """,
     )
     parser.add_argument("--repo", type=Path, required=True, help="Path to cloned source repo")
     parser.add_argument("--output", type=Path, default=Path("data/agents.json"), help="Output JSON path")
-    parser.add_argument("--source-repo-url", default="https://github.com/Shubhamsaboo/awesome-llm-apps", help="Source repo URL")
+    parser.add_argument(
+        "--source-repo-url", default="https://github.com/Shubhamsaboo/awesome-llm-apps", help="Source repo URL"
+    )
     parser.add_argument("--source-branch", default="main", help="Source repo branch")
     parser.add_argument("--no-llm", action="store_true", help="Disable LLM enrichment (force heuristics)")
-    parser.add_argument("--fetch-stars", action="store_true", help="Fetch GitHub repo stars (best-effort; may be rate limited)")
+    parser.add_argument(
+        "--fetch-stars", action="store_true", help="Fetch GitHub repo stars (best-effort; may be rate limited)"
+    )
     parser.add_argument("--limit", type=int, default=0, help="Limit number of agents indexed (0 = no limit)")
     parser.add_argument("--dry-run", action="store_true", help="List what would be indexed, then exit")
     parser.add_argument("--workers", type=int, default=20, help="Maximum parallel workers for LLM calls (default: 20)")
-    parser.add_argument("--rate-limit", type=float, default=10.0, help="LLM API rate limit in requests/second (default: 10)")
+    parser.add_argument(
+        "--rate-limit", type=float, default=10.0, help="LLM API rate limit in requests/second (default: 10)"
+    )
     parser.add_argument("--no-progress", action="store_true", help="Disable progress bars (useful for non-TTY outputs)")
     args = parser.parse_args()
 
@@ -1093,7 +1141,9 @@ Examples:
         return 1
 
     readmes = [
-        p for p in args.repo.rglob("README.md") if p.parent != args.repo and ".git" not in p.parts and ".github" not in p.parts
+        p
+        for p in args.repo.rglob("README.md")
+        if p.parent != args.repo and ".git" not in p.parts and ".github" not in p.parts
     ]
     if args.dry_run:
         for p in readmes[:200]:

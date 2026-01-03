@@ -8,28 +8,14 @@ import argparse
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
-from src.export._utils import _read_json, _write, _normalize_record
-from src.export.templates import (
-    _render_index,
-    _render_agent,
-    _render_category_landing,
-    _render_comparison_page,
-    _render_tutorial_page,
-    _render_comparison_index,
-    _render_tutorial_index,
-    _render_assets,
-    _render_404,
-    _render_headers,
-    _render_sitemap,
-)
+from src.export._utils import _normalize_record, _read_json, _slug, _write
 from src.export.data import (
     CATEGORY_PAGES,
+    COMPARISON_CONFIGS,
+    COMPLEXITY_PAGES,
     FRAMEWORK_PAGES,
     PROVIDER_PAGES,
-    COMPLEXITY_PAGES,
-    COMPARISON_CONFIGS,
     TUTORIAL_CONFIGS,
 )
 from src.export.pages import (
@@ -38,11 +24,24 @@ from src.export.pages import (
     generate_tech_combo_pages,
     generate_use_case_pages,
 )
+from src.export.templates import (
+    _render_404,
+    _render_agent,
+    _render_assets,
+    _render_category_landing,
+    _render_comparison_index,
+    _render_comparison_page,
+    _render_headers,
+    _render_index,
+    _render_sitemap,
+    _render_tutorial_index,
+    _render_tutorial_page,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def export_site(data_path: Path, output_dir: Path, *, base_url: Optional[str]) -> None:
+def export_site(data_path: Path, output_dir: Path, *, base_url: str | None) -> None:
     """Export complete static site with all pSEO pages.
 
     Generates:
@@ -60,6 +59,23 @@ def export_site(data_path: Path, output_dir: Path, *, base_url: Optional[str]) -
     agents = [_normalize_record(a) for a in _read_json(data_path)]
     agents.sort(key=lambda a: ((a.get("name") or "").lower()))
 
+    # Normalize export IDs to URL-safe slugs and ensure uniqueness.
+    #
+    # Static export URLs are path-based (`/agents/{id}/`), so IDs must be URL-safe.
+    # Keep the original ID for debugging, but render using the slug.
+    seen_ids: set[str] = set()
+    for a in agents:
+        raw_id = str(a.get("id") or "").strip()
+        slug_id = _slug(raw_id, max_length=80)
+        base = slug_id
+        suffix = 2
+        while slug_id in seen_ids:
+            slug_id = f"{base}-{suffix}"
+            suffix += 1
+        seen_ids.add(slug_id)
+        a["source_id"] = raw_id
+        a["id"] = slug_id
+
     site_url = (base_url or "https://agent-navigator.com").rstrip("/")
 
     _render_assets(output_dir)
@@ -69,9 +85,10 @@ def export_site(data_path: Path, output_dir: Path, *, base_url: Optional[str]) -
 
     # Generate individual agent pages
     for a in agents:
-        from src.export._utils import _slug
-        agent_slug = _slug(a["id"])
-        agent_dir = output_dir / "agents" / agent_slug
+        agent_id = a.get("id") or ""
+        if not isinstance(agent_id, str) or not agent_id.strip():
+            continue
+        agent_dir = output_dir / "agents" / agent_id
         _write(agent_dir / "index.html", _render_agent(a, base_url, all_agents=agents))
 
     # Track all additional URLs for sitemap
@@ -83,7 +100,9 @@ def export_site(data_path: Path, output_dir: Path, *, base_url: Optional[str]) -
         cat_dir = output_dir / cat_key
         _write(
             cat_dir / "index.html",
-            _render_category_landing(cat_key, cat_name, cat_agents, base_url=base_url, description=description, heading=heading),
+            _render_category_landing(
+                cat_key, cat_name, cat_agents, base_url=base_url, description=description, heading=heading
+            ),
         )
         additional_sitemap_urls.append(f"{site_url}/{cat_key}/")
 
@@ -251,7 +270,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Export a static site from data/agents.json")
     parser.add_argument("--data", type=Path, default=Path("data/agents.json"), help="Path to agents.json")
     parser.add_argument("--output", type=Path, default=Path("site"), help="Output directory")
-    parser.add_argument("--base-url", default=os.environ.get("SITE_BASE_URL", ""), help="Public base URL for sitemap/canonical links")
+    parser.add_argument(
+        "--base-url", default=os.environ.get("SITE_BASE_URL", ""), help="Public base URL for sitemap/canonical links"
+    )
     args = parser.parse_args()
 
     if not args.data.exists():

@@ -3,21 +3,19 @@ Pytest configuration and shared fixtures for agent-recipes tests.
 """
 
 import json
-import os
-import tempfile
-from pathlib import Path
-from typing import Any, Dict
-
-import pytest
-
 
 # Add src to path for imports
 import sys
+from pathlib import Path
+from typing import Any
+
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 @pytest.fixture
-def sample_agents() -> list[Dict[str, Any]]:
+def sample_agents() -> list[dict[str, Any]]:
     """Sample agent data for testing."""
     return [
         {
@@ -191,7 +189,7 @@ def tmp_repo_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def agents_json_path(tmp_path: Path, sample_agents: list[Dict[str, Any]]) -> Path:
+def agents_json_path(tmp_path: Path, sample_agents: list[dict[str, Any]]) -> Path:
     """Create a temporary agents.json file for testing."""
     agents_file = tmp_path / "agents.json"
     agents_file.write_text(json.dumps(sample_agents), encoding="utf-8")
@@ -199,7 +197,7 @@ def agents_json_path(tmp_path: Path, sample_agents: list[Dict[str, Any]]) -> Pat
 
 
 @pytest.fixture
-def mock_anthropic_response() -> Dict[str, Any]:
+def mock_anthropic_response() -> dict[str, Any]:
     """Mock Anthropic API response for LLM extraction."""
     return {
         "name": "Test Agent",

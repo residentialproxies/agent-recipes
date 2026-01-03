@@ -9,11 +9,11 @@ Tests for:
 import pytest
 
 from src.affiliate_manager import (
+    AFFILIATE_LINKS,
     DEFAULT_REF_KEY,
     DEFAULT_REF_VALUE,
-    AFFILIATE_LINKS,
-    inject_affiliate,
     batch_inject,
+    inject_affiliate,
 )
 
 
@@ -268,7 +268,7 @@ class TestBatchInject:
             {"slug": "special-agent", "name": "Special"},  # Hard-coded
             {"slug": "regular", "affiliate_url": "https://existing.com?ref=exists"},  # Existing
             {"slug": "derive", "website": "https://derive.com"},  # Derive
-            {"slug": "none"}  # No URL
+            {"slug": "none"},  # No URL
         ]
 
         result = batch_inject(agents)

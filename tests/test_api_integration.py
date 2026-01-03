@@ -6,7 +6,6 @@ Tests all endpoints, error handling, rate limiting, and payload limits.
 
 import json
 from pathlib import Path
-from typing import Any, Dict
 
 import pytest
 from fastapi.testclient import TestClient
@@ -190,7 +189,9 @@ class TestAgentsListEndpoint:
         data = response.json()
         # Should find pdf_assistant
         items = data["items"]
-        assert any("pdf" in item.get("name", "").lower() or "pdf" in item.get("description", "").lower() for item in items)
+        assert any(
+            "pdf" in item.get("name", "").lower() or "pdf" in item.get("description", "").lower() for item in items
+        )
 
     def test_agents_list_with_category_filter(self, client: TestClient):
         """Category filter should work."""
@@ -261,10 +262,7 @@ class TestSearchEndpoint:
 
     def test_search_basic(self, client: TestClient):
         """POST search should work like GET with query."""
-        response = client.post(
-            "/v1/search",
-            json={"q": "pdf", "page": 1, "page_size": 10}
-        )
+        response = client.post("/v1/search", json={"q": "pdf", "page": 1, "page_size": 10})
         assert response.status_code == 200
         data = response.json()
         assert "items" in data
@@ -283,7 +281,7 @@ class TestSearchEndpoint:
                 "local_only": False,
                 "page": 1,
                 "page_size": 10,
-            }
+            },
         )
         assert response.status_code == 200
         data = response.json()
@@ -296,10 +294,7 @@ class TestSearchEndpoint:
 
     def test_search_no_query_with_filters(self, client: TestClient):
         """Search without query but with filters should work."""
-        response = client.post(
-            "/v1/search",
-            json={"category": "voice"}
-        )
+        response = client.post("/v1/search", json={"category": "voice"})
         assert response.status_code == 200
         data = response.json()
         for item in data["items"]:
@@ -376,11 +371,7 @@ class TestErrorHandling:
 
     def test_malformed_json(self, client: TestClient):
         """Malformed JSON should return 422."""
-        response = client.post(
-            "/v1/search",
-            data="not valid json",
-            headers={"Content-Type": "application/json"}
-        )
+        response = client.post("/v1/search", content="not valid json", headers={"Content-Type": "application/json"})
         assert response.status_code == 422
 
 
@@ -418,14 +409,20 @@ class TestCorsHeaders:
 
     def test_cors_headers_on_options(self, client: TestClient):
         """OPTIONS request should return CORS headers."""
-        response = client.options("/v1/agents")
-        # Should have CORS-related headers
-        # Note: FastAPI CORS middleware handles this
+        resp = client.options(
+            "/v1/agents",
+            headers={
+                "Origin": "http://localhost",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert resp.status_code in (200, 204)
+        assert "access-control-allow-origin" in resp.headers
 
     def test_cors_headers_on_get(self, client: TestClient):
         """GET request should have CORS headers."""
-        response = client.get("/v1/agents")
-        # CORS headers should be present based on configuration
+        resp = client.get("/v1/agents")
+        assert resp.status_code == 200
 
 
 class TestRateLimiting:
@@ -441,7 +438,8 @@ class TestRateLimiting:
         """Excessive requests should be rate limited."""
         # This would require configuring a very low rate limit
         # For now, we test the endpoint exists
-        response = client.get("/v1/health")
+        resp = client.get("/v1/health")
+        assert resp.status_code == 200
         # In real scenario with low limit, subsequent requests would be 429
 
 
@@ -472,10 +470,7 @@ class TestCompression:
     def test_gzip_compression(self, client: TestClient):
         """Responses should be compressible."""
         # Send request with Accept-Encoding: gzip
-        response = client.get(
-            "/v1/agents",
-            headers={"Accept-Encoding": "gzip"}
-        )
+        response = client.get("/v1/agents", headers={"Accept-Encoding": "gzip"})
         # Should succeed and return data
         assert response.status_code == 200
 
@@ -535,8 +530,5 @@ class TestContentType:
 
     def test_accept_json(self, client: TestClient):
         """Request with Accept: application/json should work."""
-        response = client.get(
-            "/v1/agents",
-            headers={"Accept": "application/json"}
-        )
+        response = client.get("/v1/agents", headers={"Accept": "application/json"})
         assert response.status_code == 200

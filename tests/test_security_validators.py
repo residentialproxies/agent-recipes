@@ -4,16 +4,17 @@ Tests for security validators (src.security.validators).
 Comprehensive tests for URL validation, agent ID validation, and LLM output sanitization.
 """
 
+from contextlib import suppress
+
 import pytest
 
 from src.security.validators import (
-    validate_github_url,
-    validate_agent_id,
-    sanitize_llm_output,
-    validate_json_schema,
-    ValidationError,
     AGENT_ID_SCHEMA,
-    LLM_RESPONSE_SCHEMA,
+    ValidationError,
+    sanitize_llm_output,
+    validate_agent_id,
+    validate_github_url,
+    validate_json_schema,
 )
 
 
@@ -179,10 +180,8 @@ class TestValidateGithubUrl:
             # The validator checks for these patterns in the URL
             test_url = f"https://raw.githubusercontent.com/owner/repo/main/{ip}/file.md"
             # This might not trigger if the IP is in path, but tests the logic
-            try:
+            with suppress(ValidationError):
                 validate_github_url(test_url)
-            except ValidationError:
-                pass  # Expected
 
     def test_unicode_edge_cases(self):
         """Unicode characters in URL should be handled."""
@@ -303,7 +302,7 @@ class TestValidateAgentId:
             "<img src=x onerror=alert(1)>",
             "javascript:alert(1)",
             "data:text/html,<script>",
-            "agent\"onmouseover=\"alert(1)",
+            'agent"onmouseover="alert(1)',
         ]
         for agent_id in invalid_ids:
             with pytest.raises(ValidationError):
@@ -316,7 +315,7 @@ class TestValidateAgentId:
             "agent-\u00e9",  # e with acute accent (non-ASCII)
             "agent-\u0627",  # Arabic alef
             "agent-\ud83d\ude00",  # Emoji (grinning face)
-            "agent-\uFF11",  # Fullwidth digit 1
+            "agent-\uff11",  # Fullwidth digit 1
         ]
         for agent_id in unicode_ids:
             with pytest.raises(ValidationError):
@@ -327,7 +326,7 @@ class TestValidateAgentId:
         invalid_ids = [
             "agent' OR '1'='1",
             "agent'; DROP TABLE--",
-            "agent\" OR \"1\"=\"1",
+            'agent" OR "1"="1',
             "agent') UNION SELECT--",
         ]
         for agent_id in invalid_ids:
@@ -570,12 +569,7 @@ class TestValidateJsonSchema:
 
     def test_type_validation_number_fails(self):
         """Wrong type (string instead of number) should fail."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "count": {"type": "number"}
-            }
-        }
+        schema = {"type": "object", "properties": {"count": {"type": "number"}}}
         data = {"count": "not a number"}
         with pytest.raises(ValidationError) as exc_info:
             validate_json_schema(data, schema)
@@ -604,57 +598,32 @@ class TestValidateJsonSchema:
 
     def test_range_validation_minimum(self):
         """Minimum value constraint should be enforced."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "value": {"type": "number", "minimum": 0}
-            }
-        }
+        schema = {"type": "object", "properties": {"value": {"type": "number", "minimum": 0}}}
         data = {"value": -1}
         with pytest.raises(ValidationError):
             validate_json_schema(data, schema)
 
     def test_range_validation_maximum(self):
         """Maximum value constraint should be enforced."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "value": {"type": "number", "maximum": 100}
-            }
-        }
+        schema = {"type": "object", "properties": {"value": {"type": "number", "maximum": 100}}}
         data = {"value": 101}
         with pytest.raises(ValidationError):
             validate_json_schema(data, schema)
 
     def test_enum_validation_valid(self):
         """Valid enum value should pass."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "status": {"type": "string", "enum": ["active", "inactive"]}
-            }
-        }
+        schema = {"type": "object", "properties": {"status": {"type": "string", "enum": ["active", "inactive"]}}}
         validate_json_schema({"status": "active"}, schema)
 
     def test_enum_validation_invalid(self):
         """Invalid enum value should fail."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "status": {"type": "string", "enum": ["active", "inactive"]}
-            }
-        }
+        schema = {"type": "object", "properties": {"status": {"type": "string", "enum": ["active", "inactive"]}}}
         with pytest.raises(ValidationError):
             validate_json_schema({"status": "deleted"}, schema)
 
     def test_array_type_validation(self):
         """Array type should be enforced."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "tags": {"type": "array"}
-            }
-        }
+        schema = {"type": "object", "properties": {"tags": {"type": "array"}}}
         # Valid
         validate_json_schema({"tags": ["a", "b"]}, schema)
         # Invalid
@@ -663,12 +632,7 @@ class TestValidateJsonSchema:
 
     def test_array_length_validation(self):
         """Array length constraints should be enforced."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "items": {"type": "array", "minItems": 1, "maxItems": 5}
-            }
-        }
+        schema = {"type": "object", "properties": {"items": {"type": "array", "minItems": 1, "maxItems": 5}}}
         # Too few
         with pytest.raises(ValidationError):
             validate_json_schema({"items": []}, schema)
@@ -678,12 +642,7 @@ class TestValidateJsonSchema:
 
     def test_boolean_type_validation(self):
         """Boolean type should be enforced."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "active": {"type": "boolean"}
-            }
-        }
+        schema = {"type": "object", "properties": {"active": {"type": "boolean"}}}
         # Valid
         validate_json_schema({"active": True}, schema)
         validate_json_schema({"active": False}, schema)
@@ -693,12 +652,7 @@ class TestValidateJsonSchema:
 
     def test_object_type_validation(self):
         """Object type should be enforced."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "metadata": {"type": "object"}
-            }
-        }
+        schema = {"type": "object", "properties": {"metadata": {"type": "object"}}}
         # Valid
         validate_json_schema({"metadata": {"key": "value"}}, schema)
         # Invalid
@@ -709,15 +663,10 @@ class TestValidateJsonSchema:
         """Extra fields should be allowed when configured."""
         schema = {
             "type": "object",
-            "properties": {
-                "required_field": {"type": "string"}
-            },
-            "required": ["required_field"]
+            "properties": {"required_field": {"type": "string"}},
+            "required": ["required_field"],
         }
-        data = {
-            "required_field": "value",
-            "extra_field": "extra_value"
-        }
+        data = {"required_field": "value", "extra_field": "extra_value"}
         result = validate_json_schema(data, schema, allow_extra_fields=True)
         assert "extra_field" in result
 
@@ -725,15 +674,10 @@ class TestValidateJsonSchema:
         """Extra fields should be rejected by default."""
         schema = {
             "type": "object",
-            "properties": {
-                "required_field": {"type": "string"}
-            },
-            "required": ["required_field"]
+            "properties": {"required_field": {"type": "string"}},
+            "required": ["required_field"],
         }
-        data = {
-            "required_field": "value",
-            "extra_field": "extra_value"
-        }
+        data = {"required_field": "value", "extra_field": "extra_value"}
         with pytest.raises(ValidationError) as exc_info:
             validate_json_schema(data, schema, allow_extra_fields=False)
         assert "unexpected" in str(exc_info.value).lower()
@@ -753,14 +697,7 @@ class TestValidateJsonSchema:
         schema = {
             "type": "object",
             "required": ["name"],
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "minLength": 3,
-                    "maxLength": 20,
-                    "pattern": r"^[a-zA-Z0-9_-]+$"
-                }
-            }
+            "properties": {"name": {"type": "string", "minLength": 3, "maxLength": 20, "pattern": r"^[a-zA-Z0-9_-]+$"}},
         }
         # Valid
         validate_json_schema({"name": "valid_name_123"}, schema)

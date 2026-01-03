@@ -7,33 +7,32 @@ from __future__ import annotations
 import html
 import json
 import re
+from contextlib import suppress
 from datetime import datetime
-from typing import Optional
 
 from src.export._utils import (
     _category_icon,
     _iso_date,
-    get_sitemap_priority,
-    get_sitemap_changefreq,
     get_agent_lastmod,
-    get_breadcrumb_links,
     get_related_category_links,
-)
-from src.export.seo import (
-    _generate_meta_description,
-    _generate_open_graph_tags,
-    _generate_keywords_meta_tag,
-    _generate_page_title,
-)
-from src.export.schema import (
-    _generate_schema_org,
-    _generate_faq_schema,
-    _generate_breadcrumb_schema,
-    _generate_webpage_schema,
-    _generate_organization_schema,
-    _generate_collection_page_schema,
+    get_sitemap_changefreq,
+    get_sitemap_priority,
 )
 from src.export.data import _find_related_agents
+from src.export.schema import (
+    _generate_breadcrumb_schema,
+    _generate_collection_page_schema,
+    _generate_faq_schema,
+    _generate_organization_schema,
+    _generate_schema_org,
+    _generate_webpage_schema,
+)
+from src.export.seo import (
+    _generate_keywords_meta_tag,
+    _generate_meta_description,
+    _generate_open_graph_tags,
+    _generate_page_title,
+)
 
 
 def _minify_css(css: str) -> str:
@@ -46,13 +45,13 @@ def _minify_css(css: str) -> str:
         Minified CSS string.
     """
     # Remove comments
-    css = re.sub(r'/\*[^*]*\*+(?:[^/*][^*]*\*+)*/', '', css)
+    css = re.sub(r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/", "", css)
     # Remove whitespace around special characters
-    css = re.sub(r'\s*([{}:;,>+~])\s*', r'\1', css)
+    css = re.sub(r"\s*([{}:;,>+~])\s*", r"\1", css)
     # Remove trailing semicolons
-    css = re.sub(r';}', '}', css)
+    css = re.sub(r";}", "}", css)
     # Collapse multiple spaces into one
-    css = re.sub(r'\s+', ' ', css)
+    css = re.sub(r"\s+", " ", css)
     # Strip leading/trailing whitespace
     return css.strip()
 
@@ -62,11 +61,11 @@ def _layout(
     description: str,
     body: str,
     *,
-    canonical: Optional[str] = None,
+    canonical: str | None = None,
     asset_prefix: str = "/",
-    schema_json: Optional[str] = None,
-    og_tags: Optional[str] = None,
-    keywords_tag: Optional[str] = None,
+    schema_json: str | None = None,
+    og_tags: str | None = None,
+    keywords_tag: str | None = None,
     preload_css: bool = False,
 ) -> str:
     """Generate the base HTML layout for all pages."""
@@ -127,7 +126,7 @@ def _layout(
 """
 
 
-def _render_index(agents: list[dict], base_url: Optional[str] = None) -> str:
+def _render_index(agents: list[dict], base_url: str | None = None) -> str:
     """Render the homepage with agent listing."""
     total = len(agents)
     cats = {}
@@ -191,11 +190,13 @@ def _render_index(agents: list[dict], base_url: Optional[str] = None) -> str:
     }
 
     # Add Organization schema
-    organization_schema = json.loads(_generate_organization_schema(
-        name="Agent Navigator",
-        url=site_url,
-        description=description,
-    ))
+    organization_schema = json.loads(
+        _generate_organization_schema(
+            name="Agent Navigator",
+            url=site_url,
+            description=description,
+        )
+    )
 
     # Combine schemas
     combined_schema = json.dumps([website_schema, organization_schema], indent=2)
@@ -238,7 +239,7 @@ def _render_index(agents: list[dict], base_url: Optional[str] = None) -> str:
     )
 
 
-def _render_agent(agent: dict, base_url: Optional[str] = None, all_agents: Optional[list[dict]] = None) -> str:
+def _render_agent(agent: dict, base_url: str | None = None, all_agents: list[dict] | None = None) -> str:
     """Render an individual agent detail page."""
     icon = _category_icon(agent["category"])
     name = html.escape(agent["name"])
@@ -256,11 +257,17 @@ def _render_agent(agent: dict, base_url: Optional[str] = None, all_agents: Optio
 
     links = []
     if agent.get("github_url"):
-        links.append(f'<a class="btn" href="{html.escape(agent["github_url"])}" target="_blank" rel="noreferrer">GitHub</a>')
+        links.append(
+            f'<a class="btn" href="{html.escape(agent["github_url"])}" target="_blank" rel="noreferrer">GitHub</a>'
+        )
     if agent.get("codespaces_url"):
-        links.append(f'<a class="btn" href="{html.escape(agent["codespaces_url"])}" target="_blank" rel="noreferrer">Codespaces</a>')
+        links.append(
+            f'<a class="btn" href="{html.escape(agent["codespaces_url"])}" target="_blank" rel="noreferrer">Codespaces</a>'
+        )
     if agent.get("colab_url"):
-        links.append(f'<a class="btn" href="{html.escape(agent["colab_url"])}" target="_blank" rel="noreferrer">Colab</a>')
+        links.append(
+            f'<a class="btn" href="{html.escape(agent["colab_url"])}" target="_blank" rel="noreferrer">Colab</a>'
+        )
     link_html = " ".join(links) or ""
 
     stars = agent.get("stars")
@@ -284,10 +291,8 @@ def _render_agent(agent: dict, base_url: Optional[str] = None, all_agents: Optio
     # Get published time for article-type OG tags
     published_time = None
     if agent.get("added_at") and isinstance(agent["added_at"], int) and agent["added_at"] > 0:
-        try:
+        with suppress(OSError, ValueError):
             published_time = datetime.fromtimestamp(agent["added_at"]).strftime("%Y-%m-%dT%H:%M:%S%z")
-        except (OSError, ValueError):
-            pass
 
     og_tags = _generate_open_graph_tags(
         title=f"{agent['name']} - Agent Navigator",
@@ -327,19 +332,19 @@ def _render_agent(agent: dict, base_url: Optional[str] = None, all_agents: Optio
                 r_name = html.escape(r.get("name", ""))
                 r_desc = html.escape((r.get("description") or "")[:80])
                 r_href = f"/agents/{html.escape(r.get('id', ''))}/"
-                related_cards.append(f'''
+                related_cards.append(f"""
 <a class="card related-card" href="{r_href}">
   <div class="card-title">{r_icon} {r_name}</div>
   <div class="card-desc">{r_desc}</div>
-</a>''')
-            related_html = f'''
+</a>""")
+            related_html = f"""
 <section class="related-section">
   <h3>Related Agents</h3>
   <div class="related-grid">
     {''.join(related_cards)}
   </div>
 </section>
-'''
+"""
 
     # Generate internal links for SEO (related categories)
     internal_links_html = ""
@@ -348,19 +353,25 @@ def _render_agent(agent: dict, base_url: Optional[str] = None, all_agents: Optio
         if internal_links:
             link_items = []
             for link_text, link_url in internal_links[:5]:
-                link_items.append(f'<a href="{html.escape(link_url)}" class="category-link">{html.escape(link_text)}</a>')
-            internal_links_html = f'''
+                link_items.append(
+                    f'<a href="{html.escape(link_url)}" class="category-link">{html.escape(link_text)}</a>'
+                )
+            internal_links_html = f"""
 <div class="panel" style="margin-top: 1rem;">
   <h4>Explore More</h4>
   <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
     {''.join(f"<span>{item}</span>" for item in link_items)}
   </div>
 </div>
-'''
+"""
 
     # Breadcrumb HTML navigation with rich anchors
-    category_breadcrumb = f'<li><a href="/#{html.escape(category_raw)}">{html.escape(category_raw.replace("_", " ").title())}</a></li>' if category_raw != "other" else ""
-    breadcrumb_nav = f'''
+    category_breadcrumb = (
+        f'<li><a href="/#{html.escape(category_raw)}">{html.escape(category_raw.replace("_", " ").title())}</a></li>'
+        if category_raw != "other"
+        else ""
+    )
+    breadcrumb_nav = f"""
 <nav class="breadcrumb" aria-label="Breadcrumb">
   <ol>
     <li><a href="/">Home</a></li>
@@ -369,7 +380,7 @@ def _render_agent(agent: dict, base_url: Optional[str] = None, all_agents: Optio
     <li aria-current="page">{name}</li>
   </ol>
 </nav>
-'''
+"""
 
     body = f"""
 {breadcrumb_nav}
@@ -416,7 +427,7 @@ def _render_category_landing(
     category_name: str,
     agents: list[dict],
     *,
-    base_url: Optional[str],
+    base_url: str | None,
     description: str,
     heading: str,
     intro_content: str = "",
@@ -536,8 +547,7 @@ def _render_category_landing(
     related_html = ""
     if related_links:
         links_html = "".join(
-            f'<a class="chip" href="{html.escape(href)}">{html.escape(text)}</a>'
-            for text, href in related_links
+            f'<a class="chip" href="{html.escape(href)}">{html.escape(text)}</a>' for text, href in related_links
         )
         related_html = f'<section><h2>Related Topics</h2><div class="chips">{links_html}</div></section>'
 
@@ -548,16 +558,16 @@ def _render_category_landing(
         for faq in faqs:
             question = html.escape(faq.get("name", ""))
             answer = html.escape(faq.get("acceptedAnswer", {}).get("text", ""))
-            faq_items += f'''
+            faq_items += f"""
     <details><summary>{question}</summary>
       <p>{answer}</p>
-    </details>'''
-        faq_html = f'''
+    </details>"""
+        faq_html = f"""
 <section class="about">
   <h2>Frequently Asked Questions</h2>
   <div class="faq-container">{faq_items}
   </div>
-</section>'''
+</section>"""
 
     body = f"""
 <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -624,7 +634,7 @@ def _render_comparison_page(
     left_agents: list[dict],
     right_agents: list[dict],
     *,
-    base_url: Optional[str],
+    base_url: str | None,
     comparison_content: str,
     faq_data: list[dict],
 ) -> str:
@@ -670,16 +680,16 @@ def _render_comparison_page(
         for faq in faq_data:
             question = html.escape(faq.get("name", ""))
             answer = html.escape(faq.get("acceptedAnswer", {}).get("text", ""))
-            faq_items += f'''
+            faq_items += f"""
     <details><summary>{question}</summary>
       <p>{answer}</p>
-    </details>'''
-        faq_html = f'''
+    </details>"""
+        faq_html = f"""
 <section class="about">
   <h2>Frequently Asked Questions</h2>
   <div class="faq-container">{faq_items}
   </div>
-</section>'''
+</section>"""
 
     body = f"""
 <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -749,7 +759,7 @@ def _render_tutorial_page(
     description: str,
     agents: list[dict],
     *,
-    base_url: Optional[str],
+    base_url: str | None,
     tutorial_content: str,
     faq_data: list[dict],
     difficulty: str = "Intermediate",
@@ -831,16 +841,16 @@ def _render_tutorial_page(
         for faq in faq_data:
             question = html.escape(faq.get("name", ""))
             answer = html.escape(faq.get("acceptedAnswer", {}).get("text", ""))
-            faq_items += f'''
+            faq_items += f"""
     <details><summary>{question}</summary>
       <p>{answer}</p>
-    </details>'''
-        faq_html = f'''
+    </details>"""
+        faq_html = f"""
 <section class="about">
   <h2>Frequently Asked Questions</h2>
   <div class="faq-container">{faq_items}
   </div>
-</section>'''
+</section>"""
 
     # Difficulty badge color
     difficulty_colors = {
@@ -902,7 +912,7 @@ def _render_tutorial_page(
     )
 
 
-def _render_comparison_index(*, base_url: Optional[str]) -> str:
+def _render_comparison_index(*, base_url: str | None) -> str:
     """Render the comparison index page."""
     site_url = base_url.rstrip("/") if base_url else "https://agent-navigator.com"
     index_url = f"{site_url}/compare/"
@@ -925,11 +935,14 @@ def _render_comparison_index(*, base_url: Optional[str]) -> str:
         ("Local vs Cloud LLMs", "compare/local-vs-cloud-llms/", "Privacy and cost comparison"),
     ]
 
-    cards = "".join(f'''
+    cards = "".join(
+        f"""
 <a class="card" href="{path}">
   <div class="card-title">📊 {title}</div>
   <div class="card-desc">{desc}</div>
-</a>''' for title, path, desc in comparisons)
+</a>"""
+        for title, path, desc in comparisons
+    )
 
     body = f"""
 <section class="hero">
@@ -964,7 +977,7 @@ def _render_comparison_index(*, base_url: Optional[str]) -> str:
     )
 
 
-def _render_tutorial_index(*, base_url: Optional[str]) -> str:
+def _render_tutorial_index(*, base_url: str | None) -> str:
     """Render the tutorials index page."""
     site_url = base_url.rstrip("/") if base_url else "https://agent-navigator.com"
     index_url = f"{site_url}/how-to/"
@@ -979,20 +992,48 @@ def _render_tutorial_index(*, base_url: Optional[str]) -> str:
     )
 
     tutorials = [
-        ("Build RAG Chatbot", "how-to/build-rag-chatbot/", "Beginner", "Create a retrieval augmented generation chatbot with vector database"),
-        ("Multi-Agent System", "how-to/multi-agent-system/", "Intermediate", "Build multi-agent systems with CrewAI and LangChain"),
-        ("Local LLM with Ollama", "how-to/local-llm-ollama/", "Beginner", "Run LLM agents locally with Ollama for privacy"),
-        ("OpenAI Function Calling", "how-to/openai-function-calling/", "Intermediate", "Implement function calling with OpenAI API"),
+        (
+            "Build RAG Chatbot",
+            "how-to/build-rag-chatbot/",
+            "Beginner",
+            "Create a retrieval augmented generation chatbot with vector database",
+        ),
+        (
+            "Multi-Agent System",
+            "how-to/multi-agent-system/",
+            "Intermediate",
+            "Build multi-agent systems with CrewAI and LangChain",
+        ),
+        (
+            "Local LLM with Ollama",
+            "how-to/local-llm-ollama/",
+            "Beginner",
+            "Run LLM agents locally with Ollama for privacy",
+        ),
+        (
+            "OpenAI Function Calling",
+            "how-to/openai-function-calling/",
+            "Intermediate",
+            "Implement function calling with OpenAI API",
+        ),
         ("LangChain Agents", "how-to/langchain-agents/", "Intermediate", "Build agents using LangChain framework"),
-        ("Anthropic Claude Agents", "how-to/anthropic-claude-agents/", "Intermediate", "Create agents with Anthropic's Claude API"),
+        (
+            "Anthropic Claude Agents",
+            "how-to/anthropic-claude-agents/",
+            "Intermediate",
+            "Create agents with Anthropic's Claude API",
+        ),
     ]
 
-    cards = "".join(f'''
+    cards = "".join(
+        f"""
 <a class="card" href="{path}">
   <div class="card-title">📖 {title}</div>
   <div class="card-desc">{desc}</div>
   <div class="card-badges"><span class="badge">{difficulty}</span></div>
-</a>''' for title, path, difficulty, desc in tutorials)
+</a>"""
+        for title, path, difficulty, desc in tutorials
+    )
 
     body = f"""
 <section class="hero">
@@ -1116,7 +1157,7 @@ pre { background: rgba(0,0,0,.25); padding: .75rem; border-radius: .75rem; borde
     )
 
 
-def _render_404(base_url: Optional[str]) -> str:
+def _render_404(base_url: str | None) -> str:
     """Render a simple 404 page for static hosting (e.g., Cloudflare Pages)."""
     body = """
 <section class="hero">
@@ -1167,11 +1208,18 @@ def _render_headers() -> str:
 """.lstrip()
 
 
-def _render_sitemap(out, agents: list[dict], categories: list[tuple[str, str, list]] = None, base_url: str = None, additional_urls: list[str] = None) -> None:
+def _render_sitemap(
+    out,
+    agents: list[dict],
+    categories: list[tuple[str, str, list]] = None,
+    base_url: str = None,
+    additional_urls: list[str] = None,
+) -> None:
     """Generate sitemap.xml and robots.txt files with enhanced SEO (priority, changefreq, lastmod)."""
-    from src.export._utils import _write
     import html
     from datetime import datetime
+
+    from src.export._utils import _write
 
     if categories is None:
         categories = []
@@ -1208,7 +1256,7 @@ def _render_sitemap(out, agents: list[dict], categories: list[tuple[str, str, li
         items.append(item)
 
     # Category pages with priority based on agent count
-    for key, name, cat_agents in categories:
+    for key, _name, cat_agents in categories:
         cat_url = f"{base_url}/{key}/"
         count = len(cat_agents)
         # Priority based on number of agents (more agents = higher priority)
@@ -1229,10 +1277,10 @@ def _render_sitemap(out, agents: list[dict], categories: list[tuple[str, str, li
     <priority>0.7</priority>
   </url>""")
 
-    sitemap_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+    sitemap_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 {chr(10).join(items)}
 </urlset>
-'''
+"""
     _write(out / "sitemap.xml", sitemap_content)
     _write(out / "robots.txt", f"User-agent: *\nAllow: /\nSitemap: {base_url}/sitemap.xml\n")

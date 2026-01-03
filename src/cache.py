@@ -16,12 +16,12 @@ import time
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any, Optional
 
 
 @dataclass
 class CacheEntry:
     """A cached AI response."""
+
     created_at: float
     model: str
     text: str
@@ -32,6 +32,7 @@ class CacheEntry:
 @dataclass
 class RateLimitEntry:
     """Single rate limit entry for a client."""
+
     request_times: list[float]
     last_seen: float
 
@@ -72,7 +73,7 @@ class SQLiteCache:
         Each thread gets its own connection to avoid locking issues.
         WAL mode allows concurrent readers and writers.
         """
-        if not hasattr(self._local, 'conn'):
+        if not hasattr(self._local, "conn"):
             self._local.conn = sqlite3.connect(
                 str(self.path),
                 check_same_thread=False,
@@ -97,7 +98,7 @@ class SQLiteCache:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON cache_entries(created_at)")
         conn.commit()
 
-    def get(self, key: str) -> Optional[CacheEntry]:
+    def get(self, key: str) -> CacheEntry | None:
         """
         Get entry from cache, respecting TTL.
 
@@ -109,10 +110,7 @@ class SQLiteCache:
         """
         conn = self._get_conn()
         now = time.time()
-        row = conn.execute(
-            "SELECT data, created_at FROM cache_entries WHERE key = ?",
-            (key,)
-        ).fetchone()
+        row = conn.execute("SELECT data, created_at FROM cache_entries WHERE key = ?", (key,)).fetchone()
 
         if not row:
             return None
@@ -140,7 +138,7 @@ class SQLiteCache:
         conn = self._get_conn()
         conn.execute(
             "INSERT OR REPLACE INTO cache_entries (key, created_at, data) VALUES (?, ?, ?)",
-            (key, entry.created_at, json.dumps(asdict(entry)))
+            (key, entry.created_at, json.dumps(asdict(entry))),
         )
         conn.commit()
 
@@ -153,10 +151,7 @@ class SQLiteCache:
         """
         conn = self._get_conn()
         now = time.time()
-        cursor = conn.execute(
-            "DELETE FROM cache_entries WHERE created_at < ?",
-            (now - self.ttl_seconds,)
-        )
+        cursor = conn.execute("DELETE FROM cache_entries WHERE created_at < ?", (now - self.ttl_seconds,))
         conn.commit()
         return cursor.rowcount
 
@@ -198,7 +193,7 @@ class SQLiteBudget:
 
     def _get_conn(self) -> sqlite3.Connection:
         """Get thread-local SQLite connection."""
-        if not hasattr(self._local, 'conn'):
+        if not hasattr(self._local, "conn"):
             self._local.conn = sqlite3.connect(
                 str(self.path),
                 check_same_thread=False,
@@ -231,10 +226,7 @@ class SQLiteBudget:
             USD amount spent today
         """
         conn = self._get_conn()
-        row = conn.execute(
-            "SELECT amount_usd FROM daily_spends WHERE date = ?",
-            (self._today_key(),)
-        ).fetchone()
+        row = conn.execute("SELECT amount_usd FROM daily_spends WHERE date = ?", (self._today_key(),)).fetchone()
         return float(row[0]) if row else 0.0
 
     def would_exceed(self, additional_usd: float) -> bool:
@@ -262,7 +254,7 @@ class SQLiteBudget:
         conn.execute(
             "INSERT INTO daily_spends (date, amount_usd) VALUES (?, ?) "
             "ON CONFLICT (date) DO UPDATE SET amount_usd = amount_usd + ?",
-            (k, float(usd), float(usd))
+            (k, float(usd), float(usd)),
         )
         conn.commit()
 
@@ -281,7 +273,7 @@ class SQLiteBudget:
         """
         conn = self._get_conn()
         rows = conn.execute("SELECT date, amount_usd FROM daily_spends").fetchall()
-        return {date: amount for date, amount in rows}
+        return dict(rows)
 
 
 class SQLiteRateLimiter:
@@ -325,7 +317,7 @@ class SQLiteRateLimiter:
 
     def _get_conn(self) -> sqlite3.Connection:
         """Get thread-local SQLite connection."""
-        if not hasattr(self._local, 'conn'):
+        if not hasattr(self._local, "conn"):
             self._local.conn = sqlite3.connect(
                 str(self.storage_path),
                 check_same_thread=False,
@@ -369,6 +361,7 @@ class SQLiteRateLimiter:
             Hashed client ID
         """
         import hashlib
+
         return hashlib.sha256(identifier.encode()).hexdigest()
 
     def _cleanup_old_entries(self) -> None:
@@ -394,12 +387,7 @@ class SQLiteRateLimiter:
 
         conn.commit()
 
-    def check_rate_limit(
-        self,
-        client_identifier: str,
-        *,
-        cost: int = 1
-    ) -> tuple[bool, int]:
+    def check_rate_limit(self, client_identifier: str, *, cost: int = 1) -> tuple[bool, int]:
         """
         Check if a request should be rate limited.
 
@@ -427,9 +415,8 @@ class SQLiteRateLimiter:
 
         # Count existing requests in window
         cursor = conn.execute(
-            "SELECT COUNT(*) FROM rate_limit_requests "
-            "WHERE client_id = ? AND timestamp > ?",
-            (client_id, window_start)
+            "SELECT COUNT(*) FROM rate_limit_requests " "WHERE client_id = ? AND timestamp > ?",
+            (client_id, window_start),
         )
         current_count = cursor.fetchone()[0]
 
@@ -437,9 +424,8 @@ class SQLiteRateLimiter:
         if current_count + cost > self.requests_per_window:
             # Calculate retry time
             cursor = conn.execute(
-                "SELECT MIN(timestamp) FROM rate_limit_requests "
-                "WHERE client_id = ? AND timestamp > ?",
-                (client_id, window_start)
+                "SELECT MIN(timestamp) FROM rate_limit_requests " "WHERE client_id = ? AND timestamp > ?",
+                (client_id, window_start),
             )
             result = cursor.fetchone()
             if result and result[0]:
@@ -452,16 +438,10 @@ class SQLiteRateLimiter:
 
         # Add this request (one entry per cost unit)
         for _ in range(cost):
-            conn.execute(
-                "INSERT INTO rate_limit_requests (client_id, timestamp) VALUES (?, ?)",
-                (client_id, now)
-            )
+            conn.execute("INSERT INTO rate_limit_requests (client_id, timestamp) VALUES (?, ?)", (client_id, now))
 
         # Update last seen
-        conn.execute(
-            "INSERT OR REPLACE INTO rate_limit_clients (client_id, last_seen) VALUES (?, ?)",
-            (client_id, now)
-        )
+        conn.execute("INSERT OR REPLACE INTO rate_limit_clients (client_id, last_seen) VALUES (?, ?)", (client_id, now))
 
         conn.commit()
         return True, 0
@@ -498,25 +478,23 @@ class SQLiteRateLimiter:
 
         # Count requests in current window
         cursor = conn.execute(
-            "SELECT COUNT(*) FROM rate_limit_requests "
-            "WHERE client_id = ? AND timestamp > ?",
-            (client_id, window_start)
+            "SELECT COUNT(*) FROM rate_limit_requests " "WHERE client_id = ? AND timestamp > ?",
+            (client_id, window_start),
         )
         requests_in_window = cursor.fetchone()[0]
 
         # Get oldest request time for window reset calculation
         cursor = conn.execute(
-            "SELECT MAX(timestamp) FROM rate_limit_requests "
-            "WHERE client_id = ? AND timestamp > ?",
-            (client_id, window_start)
+            "SELECT MAX(timestamp) FROM rate_limit_requests " "WHERE client_id = ? AND timestamp > ?",
+            (client_id, window_start),
         )
         result = cursor.fetchone()
         window_reset = result[0] + self.window_seconds if result and result[0] else now + self.window_seconds
 
         return {
-            'requests_remaining': max(0, self.requests_per_window - requests_in_window),
-            'requests_used': requests_in_window,
-            'window_reset': window_reset
+            "requests_remaining": max(0, self.requests_per_window - requests_in_window),
+            "requests_used": requests_in_window,
+            "window_reset": window_reset,
         }
 
     def reset_all(self) -> None:

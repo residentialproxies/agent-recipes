@@ -11,24 +11,23 @@ Tests all security fixes:
 
 import json
 import time
-from pathlib import Path
+
 import pytest
 
-from src.security.validators import (
-    validate_github_url,
-    sanitize_llm_output,
-    validate_agent_id,
-    validate_json_schema,
-    ValidationError,
-    AGENT_ID_SCHEMA,
-    LLM_RESPONSE_SCHEMA,
-)
 from src.security.rate_limit import (
     FileRateLimiter,
     RateLimitConfig,
 )
 from src.security.secrets import (
     SecretsManager,
+)
+from src.security.validators import (
+    AGENT_ID_SCHEMA,
+    ValidationError,
+    sanitize_llm_output,
+    validate_agent_id,
+    validate_github_url,
+    validate_json_schema,
 )
 
 
@@ -239,10 +238,7 @@ class TestRateLimiting:
     def test_rate_limit_allows_requests_within_limit(self, tmp_path):
         """Requests within limit should be allowed."""
         storage_path = tmp_path / "rate_limit.json"
-        rate_limiter = FileRateLimiter(
-            str(storage_path),
-            RateLimitConfig(requests_per_window=5, window_seconds=60)
-        )
+        rate_limiter = FileRateLimiter(str(storage_path), RateLimitConfig(requests_per_window=5, window_seconds=60))
 
         for i in range(5):
             allowed, _ = rate_limiter.check_rate_limit("test_client")
@@ -251,13 +247,10 @@ class TestRateLimiting:
     def test_rate_limit_blocks_excess_requests(self, tmp_path):
         """Requests exceeding limit should be blocked."""
         storage_path = tmp_path / "rate_limit2.json"
-        rate_limiter = FileRateLimiter(
-            str(storage_path),
-            RateLimitConfig(requests_per_window=3, window_seconds=60)
-        )
+        rate_limiter = FileRateLimiter(str(storage_path), RateLimitConfig(requests_per_window=3, window_seconds=60))
 
         # First 3 requests should be allowed
-        for i in range(3):
+        for _i in range(3):
             allowed, _ = rate_limiter.check_rate_limit("test_client")
             assert allowed is True
 
@@ -289,8 +282,7 @@ class TestRateLimiting:
     def test_rate_limit_separate_clients(self, tmp_path):
         """Rate limiting should be per-client."""
         rate_limiter = FileRateLimiter(
-            str(tmp_path / "rate_limit4.json"),
-            RateLimitConfig(requests_per_window=2, window_seconds=60)
+            str(tmp_path / "rate_limit4.json"), RateLimitConfig(requests_per_window=2, window_seconds=60)
         )
 
         # Client 1 makes 2 requests
@@ -310,18 +302,12 @@ class TestRateLimiting:
         storage_path = str(tmp_path / "rate_limit5.json")
 
         # Create first instance and make requests
-        limiter1 = FileRateLimiter(
-            storage_path,
-            RateLimitConfig(requests_per_window=2, window_seconds=60)
-        )
+        limiter1 = FileRateLimiter(storage_path, RateLimitConfig(requests_per_window=2, window_seconds=60))
         limiter1.check_rate_limit("persist_client")
         limiter1.check_rate_limit("persist_client")
 
         # Create second instance - should load the same state
-        limiter2 = FileRateLimiter(
-            storage_path,
-            RateLimitConfig(requests_per_window=2, window_seconds=60)
-        )
+        limiter2 = FileRateLimiter(storage_path, RateLimitConfig(requests_per_window=2, window_seconds=60))
         allowed, _ = limiter2.check_rate_limit("persist_client")
         assert allowed is False
 
@@ -331,7 +317,6 @@ class TestSecretsManagement:
 
     def test_secrets_can_be_retrieved(self, tmp_path):
         """Secrets should be retrievable."""
-        import stat
         secrets_path = tmp_path / "secrets.json"
         secrets_path.write_text(json.dumps({"TEST_KEY": "test_value"}))
         # Set secure permissions
@@ -348,7 +333,6 @@ class TestSecretsManagement:
 
     def test_secrets_are_cached(self, tmp_path):
         """Secrets should be cached after first load."""
-        import stat
         secrets_path = tmp_path / "secrets.json"
         secrets_path.write_text(json.dumps({"CACHED_KEY": "value"}))
         # Set secure permissions
@@ -367,7 +351,6 @@ class TestSecretsManagement:
 
     def test_secrets_file_permissions_validated(self, tmp_path):
         """Insecure file permissions should raise error."""
-        import stat
         secrets_path = tmp_path / "secrets_perms.json"
         secrets_path.write_text(json.dumps({"KEY": "value"}))
 
@@ -429,12 +412,7 @@ class TestJSONSchemaValidation:
 
     def test_enum_validation(self):
         """Enum constraints should be enforced."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "status": {"type": "string", "enum": ["active", "inactive"]}
-            }
-        }
+        schema = {"type": "object", "properties": {"status": {"type": "string", "enum": ["active", "inactive"]}}}
         # Valid
         validate_json_schema({"status": "active"}, schema)
 
@@ -446,15 +424,10 @@ class TestJSONSchemaValidation:
         """Extra fields should be allowed when configured."""
         schema = {
             "type": "object",
-            "properties": {
-                "required_field": {"type": "string"}
-            },
-            "required": ["required_field"]
+            "properties": {"required_field": {"type": "string"}},
+            "required": ["required_field"],
         }
-        data = {
-            "required_field": "value",
-            "extra_field": "extra_value"
-        }
+        data = {"required_field": "value", "extra_field": "extra_value"}
         result = validate_json_schema(data, schema, allow_extra_fields=True)
         assert "extra_field" in result
 
@@ -462,15 +435,10 @@ class TestJSONSchemaValidation:
         """Extra fields should be rejected by default."""
         schema = {
             "type": "object",
-            "properties": {
-                "required_field": {"type": "string"}
-            },
-            "required": ["required_field"]
+            "properties": {"required_field": {"type": "string"}},
+            "required": ["required_field"],
         }
-        data = {
-            "required_field": "value",
-            "extra_field": "extra_value"
-        }
+        data = {"required_field": "value", "extra_field": "extra_value"}
         with pytest.raises(ValidationError) as exc_info:
             validate_json_schema(data, schema, allow_extra_fields=False)
         assert "unexpected" in str(exc_info.value).lower()
@@ -494,12 +462,11 @@ class TestUnicodeEdgeCases:
         ]
         for url in suspicious_urls:
             try:
-                with pytest.raises(ValidationError):
-                    validate_github_url(url)
-            except AssertionError:
-                # At minimum, the URL should not pass validation unchanged
-                result = validate_github_url(url)
-                assert False, f"Suspicious URL should not pass: {url}"
+                validate_github_url(url)
+            except ValidationError:
+                pass
+            else:
+                raise AssertionError(f"Suspicious URL should not pass: {url}")
 
     def test_unicode_null_bytes_in_url(self):
         """Null bytes in URL should be blocked."""
@@ -612,29 +579,19 @@ class TestLargePayloadHandling:
         """Large JSON payload should still validate."""
         large_data = {
             "id": "a" * 50,  # Valid length
-            "nested": {
-                "value": "x" * 1000
-            }
+            "nested": {"value": "x" * 1000},
         }
         schema = {
             "type": "object",
             "required": ["id"],
-            "properties": {
-                "id": {"type": "string", "maxLength": 100},
-                "nested": {"type": "object"}
-            }
+            "properties": {"id": {"type": "string", "maxLength": 100}, "nested": {"type": "object"}},
         }
         result = validate_json_schema(large_data, schema)
         assert result["id"] == "a" * 50
 
     def test_recursive_json_depth(self):
         """Deeply nested JSON should be handled."""
-        deep_schema = {
-            "type": "object",
-            "properties": {
-                "level": {"type": "object"}
-            }
-        }
+        deep_schema = {"type": "object", "properties": {"level": {"type": "object"}}}
         # Create a moderately deep object
         deep_data = {"level": {}}
         current = deep_data["level"]
@@ -646,10 +603,7 @@ class TestLargePayloadHandling:
 
     def test_many_properties_in_schema(self):
         """Schema with many properties should validate."""
-        many_prop_schema = {
-            "type": "object",
-            "properties": {f"field_{i}": {"type": "string"} for i in range(100)}
-        }
+        many_prop_schema = {"type": "object", "properties": {f"field_{i}": {"type": "string"} for i in range(100)}}
         data = {f"field_{i}": f"value_{i}" for i in range(100)}
         result = validate_json_schema(data, many_prop_schema, allow_extra_fields=False)
         assert len(result) == 100

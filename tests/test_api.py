@@ -21,6 +21,7 @@ def test_health(sample_agents, tmp_path):
     app = create_app(agents_path=data_path)
     # Manually set up the app state that would normally be initialized by lifespan
     from src.api import AppState
+
     snap = load_agents(path=data_path)
     app.state.state = AppState(snapshot=snap)
 
@@ -38,6 +39,7 @@ def test_agents_list_and_detail(sample_agents, tmp_path):
     app = create_app(agents_path=data_path)
     # Manually set up the app state that would normally be initialized by lifespan
     from src.api import AppState
+
     snap = load_agents(path=data_path)
     app.state.state = AppState(snapshot=snap)
 
@@ -61,6 +63,7 @@ def test_invalid_agent_id_returns_400(sample_agents, tmp_path):
     app = create_app(agents_path=data_path)
     # Manually set up the app state that would normally be initialized by lifespan
     from src.api import AppState
+
     snap = load_agents(path=data_path)
     app.state.state = AppState(snapshot=snap)
 

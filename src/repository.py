@@ -8,13 +8,13 @@ from typing import Any
 
 from src.security.sql import escape_like_pattern, validate_search_input
 
-
 _ALLOWED_PRICING = {"free", "freemium", "paid", "enterprise"}
 
 
 @dataclass
 class Agent:
     """Data model for an AI agent worker."""
+
     slug: str
     name: str
     tagline: str
@@ -239,7 +239,7 @@ class AgentRepo:
         if capability:
             sql += " JOIN agent_capabilities ac ON a.slug = ac.agent_slug"
 
-        where: List[str] = ["a.labor_score >= ?"]
+        where: list[str] = ["a.labor_score >= ?"]
         params.append(float(min_score))
 
         if capability:
@@ -275,9 +275,7 @@ class AgentRepo:
 
     def get_all_capabilities(self) -> list[str]:
         with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT DISTINCT capability FROM agent_capabilities ORDER BY capability"
-            ).fetchall()
+            rows = conn.execute("SELECT DISTINCT capability FROM agent_capabilities ORDER BY capability").fetchall()
             return [row["capability"] for row in rows]
 
     def count(self) -> int:

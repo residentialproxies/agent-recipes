@@ -12,8 +12,6 @@ import os
 from pathlib import Path
 from unittest import mock
 
-import pytest
-
 
 class TestSettings:
     """Tests for Settings class."""
@@ -152,7 +150,7 @@ class TestSettings:
         with mock.patch.dict(os.environ, {"GITHUB_TOKEN": "ghp_test"}):
             settings = Settings()
             # Access the property while the mock is still active
-            assert settings.github_token == "ghp_test"
+            assert settings.github_token == "ghp_test"  # noqa: S105
 
     def test_missing_api_key(self):
         """Test that missing API key returns None."""
@@ -169,7 +167,7 @@ class TestGetSettings:
 
     def test_get_settings_returns_settings(self):
         """Test that get_settings returns a Settings instance."""
-        from src.config import get_settings, Settings
+        from src.config import Settings, get_settings
 
         settings = get_settings()
         assert isinstance(settings, Settings)
@@ -237,7 +235,7 @@ class TestConstants:
 
     def test_category_icons_mapping(self):
         """Test that CATEGORY_ICONS contains expected mappings."""
-        from src.config import CATEGORY_ICONS, CATEGORIES
+        from src.config import CATEGORIES, CATEGORY_ICONS
 
         assert isinstance(CATEGORY_ICONS, dict)
         # All categories should have icons
@@ -249,7 +247,7 @@ class TestConstants:
         """Test that category icons are emoji characters."""
         from src.config import CATEGORY_ICONS
 
-        for cat, icon in CATEGORY_ICONS.items():
+        for _cat, icon in CATEGORY_ICONS.items():
             # Emoji should be non-ASCII
             assert not icon.isascii() or icon == "✨"
 

@@ -11,10 +11,12 @@ Performance Features:
 - Efficient BM25 implementation
 """
 
+import hashlib
 import logging
 import re
+import threading
 from collections import OrderedDict
-from typing import Any, Optional, List, Dict
+from typing import Any
 
 try:
     from rank_bm25 import BM25Okapi
@@ -23,23 +25,57 @@ try:
 except ImportError:
     HAS_BM25 = False
     # Fallback implementation if rank_bm25 is not available
-    import math
 
 logger = logging.getLogger(__name__)
 
 
 # Common English stopwords to filter out
 _STOPWORDS = {
-    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
-    "of", "with", "by", "from", "as", "is", "was", "are", "were", "be",
-    "been", "being", "have", "has", "had", "do", "does", "did", "will",
-    "would", "could", "should", "may", "might", "can", "this", "that",
+    "a",
+    "an",
+    "the",
+    "and",
+    "or",
+    "but",
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+    "of",
+    "with",
+    "by",
+    "from",
+    "as",
+    "is",
+    "was",
+    "are",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "could",
+    "should",
+    "may",
+    "might",
+    "can",
+    "this",
+    "that",
 }
 
 
 # =============================================================================
 # Search Result Cache
 # =============================================================================
+
 
 class LRUCache:
     """Thread-safe LRU cache for search results."""
@@ -49,43 +85,49 @@ class LRUCache:
         self._cache: OrderedDict = OrderedDict()
         self._hits = 0
         self._misses = 0
+        self._lock = threading.Lock()
 
-    def get(self, key: tuple) -> Optional[List[Dict]]:
+    def get(self, key: tuple) -> list[dict] | None:
         """Get cached search results."""
-        if key in self._cache:
-            self._cache.move_to_end(key)
-            self._hits += 1
-            return self._cache[key]
-        self._misses += 1
-        return None
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+                self._hits += 1
+                return self._cache[key]
+            self._misses += 1
+            return None
 
-    def set(self, key: tuple, value: List[Dict]) -> None:
+    def set(self, key: tuple, value: list[dict]) -> None:
         """Cache search results."""
-        if key in self._cache:
-            self._cache.move_to_end(key)
-        self._cache[key] = value
-        if len(self._cache) > self.max_size:
-            self._cache.popitem(last=False)
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+            self._cache[key] = value
+            if len(self._cache) > self.max_size:
+                self._cache.popitem(last=False)
 
     def clear(self) -> None:
         """Clear the cache."""
-        self._cache.clear()
-        self._hits = 0
-        self._misses = 0
+        with self._lock:
+            self._cache.clear()
+            self._hits = 0
+            self._misses = 0
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """Get cache statistics."""
-        total = self._hits + self._misses
-        hit_rate = self._hits / total if total > 0 else 0
-        return {
-            "size": len(self._cache),
-            "hits": self._hits,
-            "misses": self._misses,
-            "hit_rate": hit_rate,
-        }
+        with self._lock:
+            total = self._hits + self._misses
+            hit_rate = self._hits / total if total > 0 else 0
+            return {
+                "size": len(self._cache),
+                "hits": self._hits,
+                "misses": self._misses,
+                "hit_rate": hit_rate,
+            }
 
     def __len__(self) -> int:
-        return len(self._cache)
+        with self._lock:
+            return len(self._cache)
 
 
 # Global search cache
@@ -95,7 +137,7 @@ _search_cache = LRUCache(max_size=500)
 class AgentSearch:
     """BM25-based search for agent discovery with result caching."""
 
-    def __init__(self, agents: List[Dict], enable_cache: bool = True) -> None:
+    def __init__(self, agents: list[dict], enable_cache: bool = True) -> None:
         """
         Args:
             agents: List of agent dictionaries
@@ -110,8 +152,9 @@ class AgentSearch:
         self.agent_ids = list(self.agents.keys())
         self.enable_cache = enable_cache
 
-        # Create a cache key based on agent IDs to distinguish different AgentSearch instances
-        self._cache_key_salt = "_".join(sorted(self.agent_ids))
+        # Create a short, stable cache salt (avoid huge keys with thousands of IDs).
+        salt_source = "\0".join(sorted(self.agent_ids)).encode("utf-8")
+        self._cache_key_salt = hashlib.sha256(salt_source).hexdigest()[:16]
 
         # Precompile regex for better performance
         self._tokenize_pattern = re.compile(r"[^\w\s]")
@@ -127,18 +170,20 @@ class AgentSearch:
             frameworks = agent.get("frameworks") or []
             providers = agent.get("llm_providers") or []
             pricing = agent.get("pricing", "") or ""
-            text = " ".join([
-                " ".join([name] * 3),  # Boost name without token merging
-                " ".join([description] * 2),  # Boost description without token merging
-                " ".join([tagline] * 2),  # Boost tagline (WebManus)
-                agent.get("category", "") or "",
-                " ".join([str(c) for c in capabilities]) if capabilities else "",
-                " ".join(frameworks) if frameworks else "",
-                " ".join(providers) if providers else "",
-                agent.get("design_pattern", "") or "",
-                agent.get("complexity", "") or "",
-                pricing,
-            ])
+            text = " ".join(
+                [
+                    " ".join([name] * 3),  # Boost name without token merging
+                    " ".join([description] * 2),  # Boost description without token merging
+                    " ".join([tagline] * 2),  # Boost tagline (WebManus)
+                    agent.get("category", "") or "",
+                    " ".join([str(c) for c in capabilities]) if capabilities else "",
+                    " ".join(frameworks) if frameworks else "",
+                    " ".join(providers) if providers else "",
+                    agent.get("design_pattern", "") or "",
+                    agent.get("complexity", "") or "",
+                    pricing,
+                ]
+            )
             tokens = self._tokenize(text)
             # Ensure we have at least one token per document (use id as fallback)
             if not tokens:
@@ -167,7 +212,7 @@ class AgentSearch:
         # Remove very short tokens and stopwords
         return [t for t in tokens if len(t) > 1 and t not in _STOPWORDS]
 
-    def search(self, query: str, limit: int = 20, use_cache: bool = True) -> List[Dict]:
+    def search(self, query: str, limit: int = 20, use_cache: bool = True) -> list[dict]:
         """
         Search agents using BM25.
 
@@ -190,7 +235,9 @@ class AgentSearch:
 
         if not query.strip():
             # Return all agents sorted by name (using a copy to prevent cache mutation)
-            results = [a.copy() for a in sorted(self.agents.values(), key=lambda a: (a.get("name", "") or "").lower())][:limit]
+            results = [a.copy() for a in sorted(self.agents.values(), key=lambda a: (a.get("name", "") or "").lower())][
+                :limit
+            ]
             if self.enable_cache and cache_key:
                 _search_cache.set(cache_key, [a.copy() for a in results])
             return results
@@ -198,9 +245,9 @@ class AgentSearch:
         # Tokenize query
         query_tokens = self._tokenize(query)
         if not query_tokens:
-            results = list(self.agents.values())[:limit]
+            results = [a.copy() for a in list(self.agents.values())[:limit]]
             if self.enable_cache and cache_key:
-                _search_cache.set(cache_key, results)
+                _search_cache.set(cache_key, [a.copy() for a in results])
             return results
 
         # Get BM25 scores
@@ -279,16 +326,16 @@ class AgentSearch:
 
     def filter_agents(
         self,
-        agents: List[Dict],
-        category: Optional[str] = None,
-        capability: Optional[str] = None,
-        framework: Optional[str] = None,
-        provider: Optional[str] = None,
-        complexity: Optional[str] = None,
+        agents: list[dict],
+        category: str | None = None,
+        capability: str | None = None,
+        framework: str | None = None,
+        provider: str | None = None,
+        complexity: str | None = None,
         local_only: bool = False,
-        pricing: Optional[str] = None,
+        pricing: str | None = None,
         min_score: float = 0.0,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Apply filters to an agent list.
 
@@ -316,7 +363,7 @@ class AgentSearch:
                 return None
             if values == "all":
                 return None
-            if isinstance(values, (list, tuple, set)):
+            if isinstance(values, list | tuple | set):
                 cleaned = [v for v in values if v and v != "all"]
                 return cleaned or None
             return [values]
@@ -337,11 +384,7 @@ class AgentSearch:
             filtered = [a for a in filtered if a.get("category") in categories]
 
         if capabilities:
-            filtered = [
-                a
-                for a in filtered
-                if any(c in (a.get("capabilities") or []) for c in capabilities)
-            ]
+            filtered = [a for a in filtered if any(c in (a.get("capabilities") or []) for c in capabilities)]
 
         if frameworks:
             filtered = [a for a in filtered if any(f in a.get("frameworks", []) for f in frameworks)]

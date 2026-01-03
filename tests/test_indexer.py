@@ -14,28 +14,25 @@ Covers:
 
 import json
 from pathlib import Path
-from typing import Any, Dict
-from unittest.mock import Mock, MagicMock, patch
+from typing import Any
+from unittest.mock import Mock, patch
 
 import pytest
 
 from src.indexer import (
-    _content_hash,
-    _safe_title_from_path,
-    _tokenize_for_tags,
-    _detect_languages,
-    _extract_quick_start,
-    _heuristic_extract,
-    _normalize_llm_output,
-    _git_last_modified_ts,
-    _parse_github_owner_repo,
-    _fetch_github_repo_stars,
+    CATEGORIES,
     AgentMetadata,
     RepoIndexer,
-    CATEGORIES,
-    FRAMEWORKS,
-    LLM_PROVIDERS,
-    API_KEY_NAMES,
+    _content_hash,
+    _detect_languages,
+    _extract_quick_start,
+    _fetch_github_repo_stars,
+    _git_last_modified_ts,
+    _heuristic_extract,
+    _normalize_llm_output,
+    _parse_github_owner_repo,
+    _safe_title_from_path,
+    _tokenize_for_tags,
 )
 
 
@@ -293,17 +290,13 @@ class TestNormalizeLlmOutput:
         assert result["category"] == "other"
 
     def test_normalizes_frameworks(self):
-        result = _normalize_llm_output({
-            "frameworks": ["langchain", "unknown_framework", "crewai"]
-        })
+        result = _normalize_llm_output({"frameworks": ["langchain", "unknown_framework", "crewai"]})
         assert "langchain" in result["frameworks"]
         assert "crewai" in result["frameworks"]
         assert "unknown_framework" not in result["frameworks"]
 
     def test_normalizes_llm_providers(self):
-        result = _normalize_llm_output({
-            "llm_providers": ["openai", "unknown_provider"]
-        })
+        result = _normalize_llm_output({"llm_providers": ["openai", "unknown_provider"]})
         assert "openai" in result["llm_providers"]
         assert "unknown_provider" not in result["llm_providers"]
 
@@ -312,9 +305,7 @@ class TestNormalizeLlmOutput:
         assert result["complexity"] == "intermediate"
 
     def test_normalizes_api_keys(self):
-        result = _normalize_llm_output({
-            "api_keys": ["OPENAI_API_KEY", "UNKNOWN_KEY"]
-        })
+        result = _normalize_llm_output({"api_keys": ["OPENAI_API_KEY", "UNKNOWN_KEY"]})
         assert "OPENAI_API_KEY" in result["api_keys"]
         assert "UNKNOWN_KEY" not in result["api_keys"]
 
@@ -323,10 +314,12 @@ class TestNormalizeLlmOutput:
         assert result["frameworks"] == ["langchain"]
 
     def test_handles_none_values(self):
-        result = _normalize_llm_output({
-            "frameworks": None,
-            "llm_providers": None,
-        })
+        result = _normalize_llm_output(
+            {
+                "frameworks": None,
+                "llm_providers": None,
+            }
+        )
         assert result["frameworks"] == ["other"]
         assert result["llm_providers"] == ["other"]
 
@@ -401,7 +394,7 @@ class TestFetchGithubStars:
         mock_response.read.return_value = b'{"stargazers_count": 5678}'
         mock_urlopen.return_value.__enter__.return_value = mock_response
 
-        result = _fetch_github_repo_stars("user", "repo", token="test_token", use_cache=False)
+        result = _fetch_github_repo_stars("user", "repo", token="test_token", use_cache=False)  # noqa: S106
         assert result == 5678
 
     @patch("urllib.request.urlopen")
@@ -638,10 +631,7 @@ class TestRepoIndexer:
             (agent_dir / "README.md").write_text(f"# {name}", encoding="utf-8")
 
         indexer = RepoIndexer(enable_llm=False)
-        agents = indexer.index_repository(
-            repo,
-            exclude_dirs={".git", "custom_dir"}
-        )
+        agents = indexer.index_repository(repo, exclude_dirs={".git", "custom_dir"})
 
         agent_ids = [a.id for a in agents]
         assert "agent1" in agent_ids
@@ -708,7 +698,9 @@ class TestAgentMetadata:
             tags=[],
             content_hash="",
         )
-        with pytest.raises(Exception):  # FrozenInstanceError
+        import dataclasses
+
+        with pytest.raises(dataclasses.FrozenInstanceError):
             metadata.name = "New Name"
 
 

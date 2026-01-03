@@ -23,7 +23,7 @@ import logging
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class SQLiteAgentSearch:
     def __init__(
         self,
         db_path: Path,
-        agents: Optional[List[Dict]] = None,
+        agents: list[dict] | None = None,
         enable_cache: bool = True,
     ) -> None:
         """
@@ -183,7 +183,7 @@ class SQLiteAgentSearch:
 
         conn.commit()
 
-    def index_agents(self, agents: List[Dict]) -> None:
+    def index_agents(self, agents: list[dict]) -> None:
         """
         Index a list of agents into the database.
 
@@ -225,7 +225,7 @@ class SQLiteAgentSearch:
         conn.commit()
         logger.info(f"Indexed {len(agents)} agents into SQLite FTS5")
 
-    def upsert_agent(self, agent: Dict) -> None:
+    def upsert_agent(self, agent: dict) -> None:
         """
         Insert or update a single agent.
 
@@ -254,7 +254,7 @@ class SQLiteAgentSearch:
         )
         conn.commit()
 
-    def search(self, query: str, limit: int = 20, use_cache: bool = True) -> List[Dict]:
+    def search(self, query: str, limit: int = 20, _use_cache: bool = True) -> list[dict]:
         """
         Search agents using SQLite FTS5.
 
@@ -307,16 +307,16 @@ class SQLiteAgentSearch:
 
     def filter_agents(
         self,
-        agents: List[Dict],
-        category: Optional[str] = None,
-        capability: Optional[str] = None,
-        framework: Optional[str] = None,
-        provider: Optional[str] = None,
-        complexity: Optional[str] = None,
+        agents: list[dict],
+        category: str | None = None,
+        capability: str | None = None,
+        framework: str | None = None,
+        provider: str | None = None,
+        complexity: str | None = None,
         local_only: bool = False,
-        pricing: Optional[str] = None,
+        pricing: str | None = None,
         min_score: float = 0.0,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Apply filters to agent list.
 
@@ -343,7 +343,7 @@ class SQLiteAgentSearch:
                 return None
             if values == "all":
                 return None
-            if isinstance(values, (list, tuple, set)):
+            if isinstance(values, list | tuple | set):
                 cleaned = [v for v in values if v and v != "all"]
                 return cleaned or None
             return [values]
@@ -364,11 +364,7 @@ class SQLiteAgentSearch:
             filtered = [a for a in filtered if a.get("category") in categories]
 
         if capabilities:
-            filtered = [
-                a
-                for a in filtered
-                if any(c in (a.get("capabilities") or []) for c in capabilities)
-            ]
+            filtered = [a for a in filtered if any(c in (a.get("capabilities") or []) for c in capabilities)]
 
         if frameworks:
             filtered = [a for a in filtered if any(f in a.get("frameworks", []) for f in frameworks)]
@@ -387,7 +383,7 @@ class SQLiteAgentSearch:
 
         return filtered
 
-    def get_filter_options(self) -> Dict[str, List[str]]:
+    def get_filter_options(self) -> dict[str, list[str]]:
         """
         Extract all unique filter values from indexed agents.
 
@@ -432,7 +428,7 @@ class SQLiteAgentSearch:
         }
 
     @property
-    def agents(self) -> Dict[str, Dict]:
+    def agents(self) -> dict[str, dict]:
         """
         Get all agents as a dictionary (for API compatibility).
 
@@ -447,7 +443,7 @@ class SQLiteAgentSearch:
         """Clear cache (no-op for API compatibility)."""
         pass
 
-    def cache_stats(self) -> Dict[str, Any]:
+    def cache_stats(self) -> dict[str, Any]:
         """
         Get cache statistics (returns empty for API compatibility).
 
@@ -511,7 +507,10 @@ if __name__ == "__main__":
             },
         ]
 
-        db_path = Path("/tmp/test_agents.db")
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+            db_path = Path(tmp.name)
         search = SQLiteAgentSearch(db_path=db_path, agents=sample_agents)
 
         print("Search: 'PDF'")

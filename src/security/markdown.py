@@ -7,11 +7,9 @@ to prevent XSS attacks while preserving legitimate markdown formatting.
 
 import html
 import re
-from typing import Optional, Set
-
 
 # Default allowed HTML tags (safe subset)
-DEFAULT_ALLOWED_TAGS: Set[str] = {
+DEFAULT_ALLOWED_TAGS: set[str] = {
     "p",
     "br",
     "strong",
@@ -47,7 +45,7 @@ DEFAULT_ALLOWED_TAGS: Set[str] = {
 }
 
 # Default allowed attributes per tag (whitelist approach)
-DEFAULT_ALLOWED_ATTRS: dict[str, Set[str]] = {
+DEFAULT_ALLOWED_ATTRS: dict[str, set[str]] = {
     "a": {"href", "title", "rel"},
     "img": {"src", "alt", "title", "width", "height"},
     "td": {"colspan", "rowspan"},
@@ -99,8 +97,8 @@ class MarkdownSanitizer:
     def __init__(
         self,
         *,
-        allowed_tags: Optional[Set[str]] = None,
-        allowed_attrs: Optional[dict[str, Set[str]]] = None,
+        allowed_tags: set[str] | None = None,
+        allowed_attrs: dict[str, set[str]] | None = None,
         strip_disallowed_tags: bool = True,
     ):
         """
@@ -141,12 +139,9 @@ class MarkdownSanitizer:
                 return True
 
         # Relative URLs (no protocol) are allowed
-        if not any(url_lower.startswith(p) for p in ["http:", "https:", "mailto:", "tel:", "ftp:", "file:"]):
-            return True
+        return not any(url_lower.startswith(p) for p in ["http:", "https:", "mailto:", "tel:", "ftp:", "file:"])
 
-        return False
-
-    def _sanitize_attribute(self, tag: str, attr_name: str, attr_value: str) -> Optional[tuple[str, str]]:
+    def _sanitize_attribute(self, tag: str, attr_name: str, attr_value: str) -> tuple[str, str] | None:
         """
         Sanitize a single HTML attribute.
 
@@ -164,9 +159,8 @@ class MarkdownSanitizer:
             return None
 
         # For href/src, validate the URL
-        if attr_name in ("href", "src"):
-            if not self._is_safe_url(attr_value):
-                return None
+        if attr_name in ("href", "src") and not self._is_safe_url(attr_value):
+            return None
 
         # Escape the attribute value
         safe_value = html.escape(attr_value, quote=True)
@@ -283,7 +277,7 @@ def sanitize_markdown(
     markdown: str,
     *,
     max_length: int = 100_000,
-    allowed_tags: Optional[Set[str]] = None,
+    allowed_tags: set[str] | None = None,
     strip_tags: bool = True,
 ) -> str:
     """

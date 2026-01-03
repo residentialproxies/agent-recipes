@@ -11,7 +11,6 @@ Covers:
 - Search result limiting
 """
 
-import pytest
 from src.search import AgentSearch
 
 
@@ -110,7 +109,7 @@ class TestSearch:
         results = search.search("pdf", limit=5)
         for r in results:
             assert "_score" in r
-            assert isinstance(r["_score"], (int, float))
+            assert isinstance(r["_score"], int | float)
 
     def test_search_with_no_matches(self, sample_agents):
         search = AgentSearch(sample_agents)
@@ -143,8 +142,22 @@ class TestSearchFallback:
     def test_fallback_when_bm25_zero_scores(self):
         # Create agents with very generic content
         agents = [
-            {"id": "a", "name": "Agent A", "description": "test", "category": "other", "frameworks": [], "llm_providers": []},
-            {"id": "b", "name": "Agent B", "description": "test", "category": "other", "frameworks": [], "llm_providers": []},
+            {
+                "id": "a",
+                "name": "Agent A",
+                "description": "test",
+                "category": "other",
+                "frameworks": [],
+                "llm_providers": [],
+            },
+            {
+                "id": "b",
+                "name": "Agent B",
+                "description": "test",
+                "category": "other",
+                "frameworks": [],
+                "llm_providers": [],
+            },
         ]
         search = AgentSearch(agents)
         results = search.search("agent", limit=10)
@@ -296,7 +309,16 @@ class TestGetFilterOptions:
         assert "openai" in options["providers"]
 
     def test_filter_options_complexities_always_full(self):
-        agents = [{"id": "a", "name": "A", "category": "other", "frameworks": [], "llm_providers": [], "complexity": "beginner"}]
+        agents = [
+            {
+                "id": "a",
+                "name": "A",
+                "category": "other",
+                "frameworks": [],
+                "llm_providers": [],
+                "complexity": "beginner",
+            }
+        ]
         search = AgentSearch(agents)
         options = search.get_filter_options()
         assert options["complexities"] == ["beginner", "intermediate", "advanced"]
@@ -325,8 +347,22 @@ class TestEdgeCases:
     def test_agents_with_duplicate_ids(self):
         # Last agent should win
         agents = [
-            {"id": "a", "name": "First A", "description": "", "category": "other", "frameworks": [], "llm_providers": []},
-            {"id": "a", "name": "Second A", "description": "", "category": "other", "frameworks": [], "llm_providers": []},
+            {
+                "id": "a",
+                "name": "First A",
+                "description": "",
+                "category": "other",
+                "frameworks": [],
+                "llm_providers": [],
+            },
+            {
+                "id": "a",
+                "name": "Second A",
+                "description": "",
+                "category": "other",
+                "frameworks": [],
+                "llm_providers": [],
+            },
         ]
         search = AgentSearch(agents)
         assert search.agents["a"]["name"] == "Second A"
@@ -379,7 +415,14 @@ class TestSearchRanking:
         agents = [
             {"id": "z", "name": "Zeta", "description": "", "category": "other", "frameworks": [], "llm_providers": []},
             {"id": "a", "name": "Alpha", "description": "", "category": "other", "frameworks": [], "llm_providers": []},
-            {"id": "m", "name": "Middle", "description": "", "category": "other", "frameworks": [], "llm_providers": []},
+            {
+                "id": "m",
+                "name": "Middle",
+                "description": "",
+                "category": "other",
+                "frameworks": [],
+                "llm_providers": [],
+            },
         ]
         search = AgentSearch(agents)
         results = search.search("", limit=10)

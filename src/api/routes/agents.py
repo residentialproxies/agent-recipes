@@ -4,8 +4,6 @@ Agent search + detail routes.
 
 from __future__ import annotations
 
-from typing import Optional, List
-
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from src.api.dependencies import get_search_engine_for_request, get_snapshot
@@ -44,7 +42,7 @@ def _normalize_agent_for_api(agent: dict) -> dict:
     return out
 
 
-def _sort_agents(items: list[dict], *, query: str, sort: Optional[str]) -> list[dict]:
+def _sort_agents(items: list[dict], *, query: str, sort: str | None) -> list[dict]:
     if not sort:
         return items if query else sorted(items, key=lambda a: (a.get("name") or "").lower())
 
@@ -63,6 +61,7 @@ def _sort_agents(items: list[dict], *, query: str, sort: Optional[str]) -> list[
         return sorted(items, key=name_key, reverse=descending)
 
     if sort_key in ("stars", "updated_at"):
+
         def numeric(a: dict) -> int:
             value = a.get(sort_key)
             if value is None:
@@ -135,12 +134,12 @@ def agents(
     request: Request,
     response: Response,
     q: str = "",
-    category: Optional[List[str]] = Query(default=None),
-    framework: Optional[List[str]] = Query(default=None),
-    provider: Optional[List[str]] = Query(default=None),
-    complexity: Optional[List[str]] = Query(default=None),
+    category: list[str] | None = Query(default=None),
+    framework: list[str] | None = Query(default=None),
+    provider: list[str] | None = Query(default=None),
+    complexity: list[str] | None = Query(default=None),
     local_only: bool = False,
-    sort: Optional[str] = None,
+    sort: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1),
 ) -> dict:

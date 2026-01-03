@@ -6,12 +6,11 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Optional
 
 from src.export._utils import _strip_html
 
 
-def _generate_schema_org(agent: dict, base_url: str) -> str:
+def _generate_schema_org(agent: dict, _base_url: str) -> str:
     """
     Generate SoftwareSourceCode Schema.org structured data.
     """
@@ -61,7 +60,7 @@ def _generate_schema_org(agent: dict, base_url: str) -> str:
 def _generate_webpage_schema(
     agent: dict,
     base_url: str,
-    published_time: Optional[str] = None,
+    published_time: str | None = None,
 ) -> str:
     """Generate WebPage Schema.org markup with published_time for article-like content.
 
@@ -155,18 +154,21 @@ def _generate_collection_page_schema(
     for agent in agents[:20]:  # Limit to first 20 for performance
         agent_id = agent.get("id", "")
         agent_url = f"{category_url.rsplit('/', 1)[0]}/agents/{agent_id}/" if category_url else ""
-        items.append({
-            "@type": "ListItem",
-            "position": len(items) + 1,
-            "name": agent.get("name", ""),
-            "url": agent_url,
-        })
+        items.append(
+            {
+                "@type": "ListItem",
+                "position": len(items) + 1,
+                "name": agent.get("name", ""),
+                "url": agent_url,
+            }
+        )
 
     schema = {
         "@context": "https://schema.org",
         "@type": "CollectionPage",
         "name": category_name,
-        "description": description or f"Browse {len(agents)} {category_name.lower()} agent examples with code and tutorials.",
+        "description": description
+        or f"Browse {len(agents)} {category_name.lower()} agent examples with code and tutorials.",
         "url": category_url,
     }
 
@@ -176,7 +178,7 @@ def _generate_collection_page_schema(
     return json.dumps(schema, indent=2)
 
 
-def _generate_faq_schema(category: str, count: int, base_url: str) -> str:
+def _generate_faq_schema(category: str, count: int, _base_url: str) -> str:
     """
     Generate FAQPage Schema.org for category landing pages.
     """
@@ -189,7 +191,7 @@ def _generate_faq_schema(category: str, count: int, base_url: str) -> str:
         faqs = [
             {
                 "@type": "Question",
-                "name": f"What are RAG (Retrieval Augmented Generation) agents?",
+                "name": "What are RAG (Retrieval Augmented Generation) agents?",
                 "acceptedAnswer": {
                     "@type": "Answer",
                     "text": f"RAG agents combine large language models with external knowledge retrieval to provide accurate, up-to-date responses. Browse {count} RAG agent examples with tutorials and code.",
@@ -200,7 +202,7 @@ def _generate_faq_schema(category: str, count: int, base_url: str) -> str:
                 "name": f"How do I build a RAG agent with {category_name}?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": f"Each agent example includes complete setup instructions, code, and documentation. Popular frameworks include LangChain, raw API calls, and vector databases.",
+                    "text": "Each agent example includes complete setup instructions, code, and documentation. Popular frameworks include LangChain, raw API calls, and vector databases.",
                 },
             },
         ]
@@ -219,7 +221,7 @@ def _generate_faq_schema(category: str, count: int, base_url: str) -> str:
                 "name": "What frameworks support multi-agent systems?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": f"Popular frameworks include CrewAI, LangChain agents, and custom orchestrators. Each example shows complete implementation patterns.",
+                    "text": "Popular frameworks include CrewAI, LangChain agents, and custom orchestrators. Each example shows complete implementation patterns.",
                 },
             },
         ]
@@ -302,12 +304,14 @@ def _generate_breadcrumb_schema(items: list[tuple[str, str]], base_url: str) -> 
     item_list = []
 
     for i, (name, path) in enumerate(items, 1):
-        item_list.append({
-            "@type": "ListItem",
-            "position": i,
-            "name": name,
-            "item": f"{base_url}{path}" if path else base_url,
-        })
+        item_list.append(
+            {
+                "@type": "ListItem",
+                "position": i,
+                "name": name,
+                "item": f"{base_url}{path}" if path else base_url,
+            }
+        )
 
     schema = {
         "@context": "https://schema.org",
@@ -323,8 +327,8 @@ def _generate_video_schema(
     description: str,
     thumbnail_url: str,
     embed_url: str,
-    upload_date: Optional[str] = None,
-    duration: Optional[str] = None,
+    upload_date: str | None = None,
+    duration: str | None = None,
 ) -> str:
     """Generate VideoObject Schema.org markup for demo videos.
 
@@ -359,7 +363,7 @@ def _generate_review_schema(
     agent_name: str,
     github_stars: int,
     base_url: str,
-    agent_id: Optional[str] = None,
+    agent_id: str | None = None,
 ) -> str:
     """Generate AggregateRating Schema.org markup using GitHub stars as rating proxy.
 

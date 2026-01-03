@@ -5,7 +5,6 @@ SEO-related functions: meta descriptions, Open Graph tags, keywords, etc.
 from __future__ import annotations
 
 import html
-from typing import Optional
 
 from src.export._utils import generate_keywords as _generate_keywords_list
 
@@ -116,8 +115,8 @@ def _generate_open_graph_tags(
     url: str,
     image: str = "",
     og_type: str = "website",
-    published_time: Optional[str] = None,
-    author: Optional[str] = None,
+    published_time: str | None = None,
+    author: str | None = None,
 ) -> str:
     """
     Generate Open Graph and Twitter Card meta tags.
@@ -142,9 +141,8 @@ def _generate_open_graph_tags(
     # Article-specific tags (include published_time by default for agent pages)
     if published_time:
         tags.append(f'<meta property="article:published_time" content="{html.escape(published_time)}" />')
-    if og_type == "article":
-        if author:
-            tags.append(f'<meta property="article:author" content="{html.escape(author)}" />')
+    if og_type == "article" and author:
+        tags.append(f'<meta property="article:author" content="{html.escape(author)}" />')
 
     if image:
         tags.append(f'<meta property="og:image" content="{html.escape(image)}" />')
@@ -178,7 +176,6 @@ def _generate_page_title(agent: dict, base_name: str = "Agent Navigator") -> str
         SEO-optimized title string (max 65 chars for Google display).
     """
     name = agent.get("name", "")
-    category = agent.get("category", "").replace("_", " ")
     frameworks = agent.get("frameworks", [])
     framework = frameworks[0] if frameworks and frameworks[0] != "raw_api" else ""
 

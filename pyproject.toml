@@ -95,6 +95,7 @@ select = [
     "S",      # flake8-bandit (security)
 ]
 ignore = [
+    "E501",   # Line length handled by formatter (and long strings are OK)
     "S101",   # Use of assert (needed for tests)
     "S311",   # Standard pseudo-random generators
     "B008",   # Function call in default argument

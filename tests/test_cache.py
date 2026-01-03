@@ -9,11 +9,9 @@ Comprehensive tests for:
 
 import concurrent.futures
 import sqlite3
-import tempfile
 import threading
 import time
 from pathlib import Path
-from unittest import mock
 
 import pytest
 
@@ -46,21 +44,19 @@ class TestSQLiteCache:
 
     def test_init_creates_database(self, temp_db_path: Path) -> None:
         """Test that initialization creates the database and tables."""
-        cache = SQLiteCache(temp_db_path)
+        SQLiteCache(temp_db_path)
         assert temp_db_path.exists()
 
         # Verify table structure
         conn = sqlite3.connect(temp_db_path)
-        cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='cache_entries'"
-        )
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cache_entries'")
         assert cursor.fetchone() is not None
         conn.close()
 
     def test_init_creates_parent_directories(self, tmp_path: Path) -> None:
         """Test that initialization creates parent directories."""
         nested_path = tmp_path / "nested" / "dir" / "cache.db"
-        cache = SQLiteCache(nested_path)
+        SQLiteCache(nested_path)
         assert nested_path.exists()
         assert nested_path.parent.is_dir()
 
@@ -189,7 +185,7 @@ class TestSQLiteCache:
         conn = sqlite3.connect(temp_db_path)
         conn.execute(
             "INSERT INTO cache_entries (key, created_at, data) VALUES (?, ?, ?)",
-            ("bad_key", time.time(), "invalid json{")
+            ("bad_key", time.time(), "invalid json{"),
         )
         conn.commit()
         conn.close()
@@ -219,7 +215,6 @@ class TestSQLiteCache:
     def test_concurrent_access(self, cache: SQLiteCache) -> None:
         """Test concurrent reads and writes."""
         errors = []
-        results = []
 
         def write_worker(worker_id: int):
             try:
@@ -270,14 +265,12 @@ class TestSQLiteBudget:
 
     def test_init_creates_database(self, temp_db_path: Path) -> None:
         """Test that initialization creates the database."""
-        budget = SQLiteBudget(temp_db_path, daily_budget_usd=5.0)
+        SQLiteBudget(temp_db_path, daily_budget_usd=5.0)
         assert temp_db_path.exists()
 
         # Verify table structure
         conn = sqlite3.connect(temp_db_path)
-        cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='daily_spends'"
-        )
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='daily_spends'")
         assert cursor.fetchone() is not None
         conn.close()
 
@@ -342,14 +335,8 @@ class TestSQLiteBudget:
 
         # Mock different dates by directly manipulating the database
         conn = sqlite3.connect(temp_db_path)
-        conn.execute(
-            "INSERT INTO daily_spends (date, amount_usd) VALUES (?, ?)",
-            ("2024-01-01", 5.0)
-        )
-        conn.execute(
-            "INSERT INTO daily_spends (date, amount_usd) VALUES (?, ?)",
-            ("2024-01-02", 7.5)
-        )
+        conn.execute("INSERT INTO daily_spends (date, amount_usd) VALUES (?, ?)", ("2024-01-01", 5.0))
+        conn.execute("INSERT INTO daily_spends (date, amount_usd) VALUES (?, ?)", ("2024-01-02", 7.5))
         conn.commit()
         conn.close()
 
@@ -364,10 +351,7 @@ class TestSQLiteBudget:
         # Add spend for "yesterday"
         conn = sqlite3.connect(temp_db_path)
         yesterday = "2024-01-01"
-        conn.execute(
-            "INSERT INTO daily_spends (date, amount_usd) VALUES (?, ?)",
-            (yesterday, 9.0)
-        )
+        conn.execute("INSERT INTO daily_spends (date, amount_usd) VALUES (?, ?)", (yesterday, 9.0))
         conn.commit()
         conn.close()
 
@@ -402,6 +386,7 @@ class TestSQLiteBudget:
 
     def test_atomic_upsert(self, budget: SQLiteBudget) -> None:
         """Test that concurrent upserts are atomic."""
+
         def add_multiple():
             for _ in range(10):
                 budget.add_spend(0.1)
@@ -437,14 +422,12 @@ class TestSQLiteRateLimiter:
 
     def test_init_creates_database(self, temp_db_path: Path) -> None:
         """Test that initialization creates the database."""
-        limiter = SQLiteRateLimiter(temp_db_path)
+        SQLiteRateLimiter(temp_db_path)
         assert temp_db_path.exists()
 
         # Verify tables
         conn = sqlite3.connect(temp_db_path)
-        cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        )
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = [row[0] for row in cursor.fetchall()]
         assert "rate_limit_requests" in tables
         assert "rate_limit_clients" in tables
@@ -607,16 +590,10 @@ class TestSQLiteRateLimiter:
 
         # Insert old requests
         for _ in range(3):
-            conn.execute(
-                "INSERT INTO rate_limit_requests (client_id, timestamp) VALUES (?, ?)",
-                (client_id, old_time)
-            )
+            conn.execute("INSERT INTO rate_limit_requests (client_id, timestamp) VALUES (?, ?)", (client_id, old_time))
 
         # Insert old client record
-        conn.execute(
-            "INSERT INTO rate_limit_clients (client_id, last_seen) VALUES (?, ?)",
-            (client_id, old_time)
-        )
+        conn.execute("INSERT INTO rate_limit_clients (client_id, last_seen) VALUES (?, ?)", (client_id, old_time))
         conn.commit()
         conn.close()
 

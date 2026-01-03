@@ -8,10 +8,12 @@ Uses file-based configuration with restricted permissions.
 """
 
 import json
+import logging
 import os
-from pathlib import Path
-from typing import Any, Dict, Optional, Union
 import stat
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class SecretsManager:
@@ -36,7 +38,7 @@ class SecretsManager:
         api_key = manager.get("ANTHROPIC_API_KEY")
     """
 
-    def __init__(self, secrets_path: Optional[Union[str, Path]] = None):
+    def __init__(self, secrets_path: str | Path | None = None):
         """
         Initialize the secrets manager.
 
@@ -44,9 +46,9 @@ class SecretsManager:
             secrets_path: Path to secrets file. If None, searches standard locations.
         """
         self.secrets_path = self._find_secrets_file(secrets_path)
-        self._secrets_cache: Optional[Dict[str, str]] = None
+        self._secrets_cache: dict[str, str] | None = None
 
-    def _find_secrets_file(self, provided_path: Optional[Union[str, Path]]) -> Optional[Path]:
+    def _find_secrets_file(self, provided_path: str | Path | None) -> Path | None:
         """
         Find the secrets file in standard locations.
 
@@ -73,8 +75,8 @@ class SecretsManager:
 
         # Check standard locations
         standard_paths = [
-            Path('.streamlit/secrets.json'),
-            Path('.secrets.json'),
+            Path(".streamlit/secrets.json"),
+            Path(".secrets.json"),
         ]
 
         for path in standard_paths:
@@ -105,19 +107,13 @@ class SecretsManager:
 
         # Check if group or others have read permissions
         if file_mode & (stat.S_IRGRP | stat.S_IROTH):
-            raise PermissionError(
-                f"Secrets file {path} has insecure permissions. "
-                f"Please run: chmod 600 {path}"
-            )
+            raise PermissionError(f"Secrets file {path} has insecure permissions. " f"Please run: chmod 600 {path}")
 
         # Check if group or others have write permissions
         if file_mode & (stat.S_IWGRP | stat.S_IWOTH):
-            raise PermissionError(
-                f"Secrets file {path} has insecure permissions. "
-                f"Please run: chmod 600 {path}"
-            )
+            raise PermissionError(f"Secrets file {path} has insecure permissions. " f"Please run: chmod 600 {path}")
 
-    def _load_secrets(self) -> Dict[str, str]:
+    def _load_secrets(self) -> dict[str, str]:
         """
         Load secrets from file or Streamlit.
 
@@ -142,40 +138,40 @@ class SecretsManager:
             self._validate_secrets_file(self.secrets_path)
 
             try:
-                with open(self.secrets_path, 'r') as f:
+                with open(self.secrets_path) as f:
                     secrets = json.load(f)
             except json.JSONDecodeError as e:
                 raise json.JSONDecodeError(
                     f"Invalid JSON in secrets file {self.secrets_path}: {e.msg}",
                     e.doc,
-                    e.pos
-                )
+                    e.pos,
+                ) from e
         else:
             # Try Streamlit secrets as fallback
             try:
                 from streamlit import secrets as st_secrets
+
                 # Streamlit secrets is a dict-like object
                 secrets = dict(st_secrets)
             except ImportError:
                 pass
-            except Exception:
+            except Exception as exc:
                 # Streamlit secrets not available - ignore
-                pass
+                logger.debug("Streamlit secrets unavailable: %s", exc)
 
         # Also check environment variables (with security warning)
         # We prefer file-based loading over env vars
-        env_prefixes = ['ANTHROPIC_', 'OPENAI_', 'GROQ_', 'COHERE_']
+        env_prefixes = ["ANTHROPIC_", "OPENAI_", "GROQ_", "COHERE_"]
         for key in os.environ:
-            if any(key.startswith(prefix) for prefix in env_prefixes):
-                if key not in secrets:
-                    # Note: Env vars are less secure than file-based
-                    # but we allow them for compatibility
-                    secrets[key] = os.environ[key]
+            if any(key.startswith(prefix) for prefix in env_prefixes) and key not in secrets:
+                # Note: Env vars are less secure than file-based
+                # but we allow them for compatibility
+                secrets[key] = os.environ[key]
 
         self._secrets_cache = secrets
         return secrets
 
-    def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
+    def get(self, key: str, default: str | None = None) -> str | None:
         """
         Get a secret value.
 
@@ -225,14 +221,14 @@ class SecretsManager:
 
         # Save to file
         if not self.secrets_path:
-            self.secrets_path = Path('.streamlit/secrets.json')
+            self.secrets_path = Path(".streamlit/secrets.json")
 
         self.secrets_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Write with restricted permissions
         # Write to temp file first
-        temp_path = self.secrets_path.with_suffix('.tmp')
-        with open(temp_path, 'w') as f:
+        temp_path = self.secrets_path.with_suffix(".tmp")
+        with open(temp_path, "w") as f:
             json.dump(self._secrets_cache, f, indent=2)
 
         # Set restrictive permissions (600 - owner read/write only)
@@ -264,7 +260,7 @@ class SecretsManager:
         secrets = self._load_secrets()
         return list(secrets.keys())
 
-    def create_example_config(self, path: Optional[Union[str, Path]] = None) -> Path:
+    def create_example_config(self, path: str | Path | None = None) -> Path:
         """
         Create an example secrets configuration file.
 
@@ -274,10 +270,7 @@ class SecretsManager:
         Returns:
             Path to created file
         """
-        if path is None:
-            path = Path('.streamlit/secrets.example.json')
-        else:
-            path = Path(path)
+        path = Path(".streamlit/secrets.example.json") if path is None else Path(path)
 
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -286,22 +279,20 @@ class SecretsManager:
             "OPENAI_API_KEY": "sk-your-key-here",
             "GROQ_API_KEY": "gsk-your-key-here",
             "COHERE_API_KEY": "your-key-here",
-            "_comment": "Replace these with your actual API keys. Never commit this file!"
+            "_comment": "Replace these with your actual API keys. Never commit this file!",
         }
 
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             json.dump(example_config, f, indent=2)
 
         return path
 
 
 # Global secrets manager instance
-_secrets_manager: Optional[SecretsManager] = None
+_secrets_manager: SecretsManager | None = None
 
 
-def get_secrets_manager(
-    secrets_path: Optional[Union[str, Path]] = None
-) -> SecretsManager:
+def get_secrets_manager(secrets_path: str | Path | None = None) -> SecretsManager:
     """
     Get the global secrets manager instance.
 
@@ -319,7 +310,7 @@ def get_secrets_manager(
     return _secrets_manager
 
 
-def get_api_key(provider: str) -> Optional[str]:
+def get_api_key(provider: str) -> str | None:
     """
     Convenience function to get an API key for a provider.
 

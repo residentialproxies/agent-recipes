@@ -10,12 +10,14 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from contextvars import ContextVar
-from typing import AsyncGenerator, Callable
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
+
+from src.api.middleware import get_client_ip as get_client_ip_safe
 
 # Context variables for request-scoped data
 _request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
@@ -67,8 +69,8 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         # Generate or retrieve request ID
         request_id = request.headers.get("x-request-id") or generate_request_id()
 
-        # Extract client IP (trusting proxy if configured)
-        client_ip = self._get_client_ip(request)
+        # Extract client IP (proxy-safe, honors TRUST_PROXY_HEADERS/TRUSTED_PROXY_IPS)
+        client_ip = get_client_ip_safe(request)
 
         # Set context variables
         _request_id_ctx.set(request_id)
@@ -93,11 +95,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
 
             # Calculate duration
             start_time = _request_start_ctx.get()
-            duration_ms = (
-                (time.perf_counter() - start_time) * 1000
-                if start_time
-                else 0
-            )
+            duration_ms = (time.perf_counter() - start_time) * 1000 if start_time else 0
 
             # Add request ID to response headers
             response.headers["X-Request-ID"] = request_id
@@ -119,11 +117,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         except Exception as exc:
             # Calculate duration even for errors
             start_time = _request_start_ctx.get()
-            duration_ms = (
-                (time.perf_counter() - start_time) * 1000
-                if start_time
-                else 0
-            )
+            duration_ms = (time.perf_counter() - start_time) * 1000 if start_time else 0
 
             # Log error with context
             self._logger.error(
@@ -139,29 +133,6 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
                 exc_info=True,
             )
             raise
-
-    def _get_client_ip(self, request: Request) -> str:
-        """
-        Extract the real client IP from request headers.
-
-        Checks X-Forwarded-For, X-Real-IP, and falls back to
-        the direct client address. Takes the first IP in the
-        X-Forwarded-For chain as the original client.
-        """
-        # Check for forwarded headers
-        xff = request.headers.get("x-forwarded-for")
-        if xff:
-            return xff.split(",")[0].strip()
-
-        xri = request.headers.get("x-real-ip")
-        if xri:
-            return xri.strip()
-
-        # Fall back to direct connection
-        if request.client:
-            return request.client.host
-
-        return "unknown"
 
 
 async def log_request_summary(

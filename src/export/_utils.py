@@ -10,7 +10,6 @@ import re
 import unicodedata
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 
 def _read_json(path: Path) -> list[dict]:
@@ -70,7 +69,7 @@ def _slug(value: str, *, max_length: int = 50) -> str:
     # Remove common prefixes
     for prefix in _SLUG_PREFIXES_TO_REMOVE:
         if value.startswith(prefix):
-            value = value[len(prefix):]
+            value = value[len(prefix) :]
             break
 
     # Transliterate non-ASCII characters (e.g., -> cafe)
@@ -80,8 +79,8 @@ def _slug(value: str, *, max_length: int = 50) -> str:
     # Replace separators with hyphens
     value = re.sub(r"[_\s]+", "-", value)
 
-    # Remove non-alphanumeric characters (except hyphens)
-    value = re.sub(r"[^a-z0-9-]", "", value)
+    # Convert non-alphanumeric runs into hyphens (better readability for punctuation-heavy IDs)
+    value = re.sub(r"[^a-z0-9-]+", "-", value)
 
     # Remove consecutive hyphens
     value = re.sub(r"-{2,}", "-", value)
@@ -93,15 +92,12 @@ def _slug(value: str, *, max_length: int = 50) -> str:
     if len(value) > max_length:
         # Find the last hyphen before max_length
         last_hyphen = value.rfind("-", 0, max_length)
-        if last_hyphen > max_length // 2:  # Only if we get at least half the max
-            value = value[:last_hyphen]
-        else:
-            value = value[:max_length].rstrip("-")
+        value = value[:last_hyphen] if last_hyphen > max_length // 2 else value[:max_length].rstrip("-")
 
     return value or "agent"
 
 
-def _iso_date(ts: Optional[int]) -> Optional[str]:
+def _iso_date(ts: int | None) -> str | None:
     """Convert Unix timestamp to ISO date string (YYYY-MM-DD)."""
     if not isinstance(ts, int) or ts <= 0:
         return None
@@ -141,6 +137,7 @@ def _category_icon(category: str) -> str:
 def _strip_html(text: str) -> str:
     """Strip HTML tags from text for use in plain text contexts like JSON."""
     import re
+
     return re.sub(r"<[^>]+>", "", text)
 
 
@@ -167,6 +164,7 @@ def _normalize_record(agent: dict) -> dict:
 
 
 # SEO utility functions
+
 
 def get_sitemap_priority(agent: dict, max_stars: int = 50000) -> float:
     """Calculate sitemap priority based on GitHub stars.
@@ -230,7 +228,7 @@ def get_sitemap_changefreq(agent: dict, page_type: str = "agent") -> str:
     return "monthly"
 
 
-def get_agent_lastmod(agent: dict) -> Optional[str]:
+def get_agent_lastmod(agent: dict) -> str | None:
     """Get the last modified date for an agent.
 
     Args:

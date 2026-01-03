@@ -11,8 +11,7 @@ import json
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict
-from unittest import mock
+from typing import Any
 
 import pytest
 
@@ -25,6 +24,7 @@ from src.search import AgentSearch, _search_cache
 def reset_data_store_cache() -> None:
     """Reset data_store module cache before each test."""
     import src.data_store
+
     src.data_store._snapshot = None
     src.data_store._search_engine = None
     _search_cache.clear()
@@ -85,7 +85,7 @@ class TestLoadAgents:
     """Tests for load_agents function."""
 
     @pytest.fixture
-    def sample_agents(self) -> list[Dict[str, Any]]:
+    def sample_agents(self) -> list[dict[str, Any]]:
         """Sample agent data."""
         return [
             {
@@ -105,7 +105,7 @@ class TestLoadAgents:
         ]
 
     @pytest.fixture
-    def agents_file(self, tmp_path: Path, sample_agents: list[Dict[str, Any]]) -> Path:
+    def agents_file(self, tmp_path: Path, sample_agents: list[dict[str, Any]]) -> Path:
         """Create a temporary agents.json file."""
         agents_path = tmp_path / "agents.json"
         agents_path.write_text(json.dumps(sample_agents), encoding="utf-8")
@@ -129,7 +129,7 @@ class TestLoadAgents:
         assert snapshot1 is snapshot2
         assert snapshot1.mtime_ns == snapshot2.mtime_ns
 
-    def test_load_agents_invalidates_on_change(self, agents_file: Path, sample_agents: list[Dict[str, Any]]) -> None:
+    def test_load_agents_invalidates_on_change(self, agents_file: Path, sample_agents: list[dict[str, Any]]) -> None:
         """Test that cache is invalidated when file changes."""
         snapshot1 = load_agents(path=agents_file)
 
@@ -139,6 +139,7 @@ class TestLoadAgents:
 
         # Wait a tiny bit to ensure different mtime
         import time
+
         time.sleep(0.01)
 
         snapshot2 = load_agents(path=agents_file)
@@ -206,7 +207,7 @@ class TestGetSearchEngine:
     """Tests for get_search_engine function."""
 
     @pytest.fixture
-    def sample_agents(self) -> list[Dict[str, Any]]:
+    def sample_agents(self) -> list[dict[str, Any]]:
         """Sample agent data."""
         return [
             {
@@ -224,7 +225,7 @@ class TestGetSearchEngine:
         ]
 
     @pytest.fixture
-    def sample_snapshot(self, sample_agents: list[Dict[str, Any]]) -> AgentsSnapshot:
+    def sample_snapshot(self, sample_agents: list[dict[str, Any]]) -> AgentsSnapshot:
         """Create a sample snapshot."""
         return AgentsSnapshot(mtime_ns=12345, agents=sample_agents)
 
@@ -252,7 +253,9 @@ class TestGetSearchEngine:
         # Should be different instances
         assert engine1 is not engine2
 
-    def test_get_search_engine_uses_load_agents_when_no_snapshot(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_get_search_engine_uses_load_agents_when_no_snapshot(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         """Test that get_search_engine calls load_agents when no snapshot provided."""
         # Create an agents.json file
         sample_agents = [{"id": "test", "name": "Test Agent"}]
@@ -264,6 +267,7 @@ class TestGetSearchEngine:
 
         # Reset the module-level cache (the autouse fixture does this but let's be explicit)
         import src.data_store
+
         src.data_store._snapshot = None
         src.data_store._search_engine = None
 
@@ -366,6 +370,7 @@ class TestIntegration:
 
         # Update data
         import time
+
         time.sleep(0.01)  # Ensure different mtime
         agents_file.write_text(json.dumps([{"id": "v2", "name": "Version 2"}]), encoding="utf-8")
         snapshot2 = load_agents(path=agents_file)
@@ -380,6 +385,7 @@ class TestIntegration:
         # But we need to force a rebuild since we're passing snapshots explicitly
         # and the global _snapshot is only checked once
         import src.data_store
+
         src.data_store._search_engine = None  # Force rebuild
 
         engine2 = get_search_engine(snapshot=snapshot2)
@@ -390,11 +396,7 @@ class TestIntegration:
     def test_concurrent_load_and_search(self, tmp_path: Path) -> None:
         """Test concurrent loading and searching."""
         agents_data = [
-            {
-                "id": f"agent{i}",
-                "name": f"Agent {i}",
-                "description": f"This is agent {i} with description"
-            }
+            {"id": f"agent{i}", "name": f"Agent {i}", "description": f"This is agent {i} with description"}
             for i in range(20)
         ]
 

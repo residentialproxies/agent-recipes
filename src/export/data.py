@@ -5,8 +5,6 @@ Includes related agent finding and all page configuration data.
 
 from __future__ import annotations
 
-from typing import Callable
-
 
 def _find_related_agents(agent: dict, all_agents: list[dict], limit: int = 4) -> list[dict]:
     """
@@ -80,7 +78,9 @@ CATEGORY_PAGES = [
     (
         "local-llm-agents",
         "Local LLM Agents",
-        lambda a: a.get("supports_local_models", False) or "ollama" in a.get("llm_providers", []) or "local" in a.get("llm_providers", []),
+        lambda a: a.get("supports_local_models", False)
+        or "ollama" in a.get("llm_providers", [])
+        or "local" in a.get("llm_providers", []),
         "Local LLM Agents & Privacy-First Examples",
         "Run LLM agents locally with Ollama, Llama, Mistral, and other open-source models for privacy and cost savings.",
     ),
@@ -385,8 +385,12 @@ COMPARISON_CONFIGS = [
         "description": "Compare running LLMs locally vs using cloud APIs. Privacy, cost, and performance considerations.",
         "left": "Local LLMs",
         "right": "Cloud LLMs",
-        "left_filter": lambda a: a.get("supports_local_models", False) or "ollama" in a.get("llm_providers", []) or "local" in a.get("llm_providers", []),
-        "right_filter": lambda a: any(p in ["openai", "anthropic", "google", "cohere"] for p in a.get("llm_providers", [])),
+        "left_filter": lambda a: a.get("supports_local_models", False)
+        or "ollama" in a.get("llm_providers", [])
+        or "local" in a.get("llm_providers", []),
+        "right_filter": lambda a: any(
+            p in ["openai", "anthropic", "google", "cohere"] for p in a.get("llm_providers", [])
+        ),
         "content": """<section class="about">
 <h2>Local LLMs (Ollama, Llama, Mistral)</h2>
 <p>Run models on your hardware for complete privacy, no API costs, and offline capability. Requires GPU for good performance. Models like Llama 3, Mistral, and Phi-3 are surprisingly capable.</p>
@@ -421,6 +425,7 @@ COMPARISON_CONFIGS = [
 # ---------------------------------------------------------------------------
 # Additional pSEO page configs (P2)
 # ---------------------------------------------------------------------------
+
 
 def _text_blob(agent: dict) -> str:
     parts = [
@@ -494,7 +499,8 @@ BEST_OF_PAGES: dict[str, dict] = {
     "best-local-llm-agents": {
         "title": "Best Local LLM Agents",
         "description": "Strong examples that run on local models for privacy and cost savings.",
-        "criteria": lambda a: bool(a.get("supports_local_models")) or _has_any_keyword(a, ["ollama", "local llm", "llama"]),
+        "criteria": lambda a: bool(a.get("supports_local_models"))
+        or _has_any_keyword(a, ["ollama", "local llm", "llama"]),
         "sort_by": "stars",
     },
     "best-multi-agent-systems": {
@@ -530,19 +536,22 @@ BEST_OF_PAGES: dict[str, dict] = {
     "best-automation-agents": {
         "title": "Best Automation Agents",
         "description": "Agent examples focused on workflow automation and integrations.",
-        "criteria": lambda a: (a.get("category") == "automation") or _has_any_keyword(a, ["automation", "workflow", "zapier"]),
+        "criteria": lambda a: (a.get("category") == "automation")
+        or _has_any_keyword(a, ["automation", "workflow", "zapier"]),
         "sort_by": "stars",
     },
     "best-coding-assistants": {
         "title": "Best Coding Assistants",
         "description": "Coding agents: code generation, refactors, review, and dev workflows.",
-        "criteria": lambda a: (a.get("category") == "coding") or _has_any_keyword(a, ["code", "coding", "refactor", "developer"]),
+        "criteria": lambda a: (a.get("category") == "coding")
+        or _has_any_keyword(a, ["code", "coding", "refactor", "developer"]),
         "sort_by": "stars",
     },
     "best-research-assistants": {
         "title": "Best Research Assistants",
         "description": "Research agents: browsing, summarization, and knowledge work.",
-        "criteria": lambda a: (a.get("category") == "research") or _has_any_keyword(a, ["research", "paper", "literature"]),
+        "criteria": lambda a: (a.get("category") == "research")
+        or _has_any_keyword(a, ["research", "paper", "literature"]),
         "sort_by": "stars",
     },
 }
@@ -558,13 +567,15 @@ USE_CASES: dict[str, dict] = {
     "research-assistants": {
         "title": "Research Assistants",
         "description": "Research agents for search, summarization, and knowledge synthesis.",
-        "criteria": lambda a: (a.get("category") == "research") or _has_any_keyword(a, ["research", "paper", "arxiv", "literature"]),
+        "criteria": lambda a: (a.get("category") == "research")
+        or _has_any_keyword(a, ["research", "paper", "arxiv", "literature"]),
         "keywords": ["research", "papers", "summarize"],
     },
     "coding-assistants": {
         "title": "Coding Assistants",
         "description": "Coding agents for development workflows: generation, refactors, and review.",
-        "criteria": lambda a: (a.get("category") == "coding") or _has_any_keyword(a, ["code", "coding", "refactor", "review"]),
+        "criteria": lambda a: (a.get("category") == "coding")
+        or _has_any_keyword(a, ["code", "coding", "refactor", "review"]),
         "keywords": ["coding", "refactor", "review"],
     },
     "content-generation": {
@@ -582,7 +593,8 @@ USE_CASES: dict[str, dict] = {
     "workflow-automation": {
         "title": "Workflow Automation Agents",
         "description": "Workflow automation agents that connect tools and execute tasks end-to-end.",
-        "criteria": lambda a: (a.get("category") == "automation") or _has_any_keyword(a, ["workflow", "automation", "integrations"]),
+        "criteria": lambda a: (a.get("category") == "automation")
+        or _has_any_keyword(a, ["workflow", "automation", "integrations"]),
         "keywords": ["workflow", "automation", "integrations"],
     },
 }
@@ -592,19 +604,22 @@ TECH_COMBOS: dict[str, dict] = {
     "langchain-with-openai": {
         "title": "LangChain with OpenAI",
         "description": "Examples combining LangChain with OpenAI models and APIs.",
-        "criteria": lambda a: ("langchain" in (a.get("frameworks") or [])) and ("openai" in (a.get("llm_providers") or [])),
+        "criteria": lambda a: ("langchain" in (a.get("frameworks") or []))
+        and ("openai" in (a.get("llm_providers") or [])),
         "keywords": ["langchain", "openai"],
     },
     "langchain-with-anthropic": {
         "title": "LangChain with Anthropic",
         "description": "LangChain examples using Anthropic Claude models.",
-        "criteria": lambda a: ("langchain" in (a.get("frameworks") or [])) and ("anthropic" in (a.get("llm_providers") or [])),
+        "criteria": lambda a: ("langchain" in (a.get("frameworks") or []))
+        and ("anthropic" in (a.get("llm_providers") or [])),
         "keywords": ["langchain", "anthropic", "claude"],
     },
     "crewai-with-local-llms": {
         "title": "CrewAI with Local LLMs",
         "description": "CrewAI multi-agent examples that run on local models.",
-        "criteria": lambda a: ("crewai" in (a.get("frameworks") or [])) and (bool(a.get("supports_local_models")) or _has_any_keyword(a, ["ollama", "local"])),
+        "criteria": lambda a: ("crewai" in (a.get("frameworks") or []))
+        and (bool(a.get("supports_local_models")) or _has_any_keyword(a, ["ollama", "local"])),
         "keywords": ["crewai", "local llm", "ollama"],
     },
     "rag-with-pinecone": {
@@ -622,7 +637,8 @@ TECH_COMBOS: dict[str, dict] = {
     "multi-agent-with-autogen": {
         "title": "Multi-Agent with AutoGen",
         "description": "Multi-agent orchestration examples using AutoGen.",
-        "criteria": lambda a: _has_any_keyword(a, ["autogen"]) and ((a.get("category") == "multi_agent") or ("autogen" in (a.get("frameworks") or []))),
+        "criteria": lambda a: _has_any_keyword(a, ["autogen"])
+        and ((a.get("category") == "multi_agent") or ("autogen" in (a.get("frameworks") or []))),
         "keywords": ["autogen", "multi-agent"],
     },
     "function-calling-with-gpt4": {
@@ -781,7 +797,8 @@ Quantized models (4-bit) reduce requirements by ~50%</p>
         "key": "openai-function-calling",
         "title": "How to Use OpenAI Function Calling",
         "description": "Learn to implement function calling with OpenAI's API. Build agents that can use tools and take actions.",
-        "filter": lambda a: "openai" in a.get("llm_providers", []) and ("tool" in a.get("design_pattern", "") or "function" in str(a.get("tags", [])).lower()),
+        "filter": lambda a: "openai" in a.get("llm_providers", [])
+        and ("tool" in a.get("design_pattern", "") or "function" in str(a.get("tags", [])).lower()),
         "difficulty": "Intermediate",
         "content": """<section class="about">
 <h2>What is Function Calling?</h2>

@@ -161,7 +161,7 @@ def ai_select_stream(payload: AISelectRequest, request: Request) -> StreamingRes
 
     def _sse(data: Any, *, event: str = "message") -> bytes:
         line = json.dumps(data, ensure_ascii=False)
-        return f"event: {event}\ndata: {line}\n\n".encode("utf-8")
+        return f"event: {event}\ndata: {line}\n\n".encode()
 
     def generator():
         if cached:
@@ -224,7 +224,8 @@ def ai_select_stream(payload: AISelectRequest, request: Request) -> StreamingRes
             ),
         )
 
-        yield _sse({"cached": False, "done": True, "text": safe_text, "usage": usage, "cost_usd": cost_usd}, event="done")
+        yield _sse(
+            {"cached": False, "done": True, "text": safe_text, "usage": usage, "cost_usd": cost_usd}, event="done"
+        )
 
     return StreamingResponse(generator(), media_type="text/event-stream")
-

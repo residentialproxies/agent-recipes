@@ -14,21 +14,21 @@ Covers:
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
 
 import pytest
+
 from src.export_static import (
-    _read_json,
-    _write,
-    _slug,
-    _iso_date,
     _category_icon,
-    _normalize_record,
+    _iso_date,
     _layout,
-    _render_index,
+    _normalize_record,
+    _read_json,
     _render_agent,
     _render_assets,
+    _render_index,
     _render_sitemap,
+    _slug,
+    _write,
     export_site,
 )
 
@@ -44,13 +44,13 @@ class TestReadJson:
 
     def test_read_json_empty_array(self, tmp_path: Path):
         data_file = tmp_path / "data.json"
-        data_file.write_text('[]', encoding="utf-8")
+        data_file.write_text("[]", encoding="utf-8")
         result = _read_json(data_file)
         assert result == []
 
     def test_read_json_invalid(self, tmp_path: Path):
         data_file = tmp_path / "data.json"
-        data_file.write_text('invalid json', encoding="utf-8")
+        data_file.write_text("invalid json", encoding="utf-8")
         with pytest.raises(json.JSONDecodeError):
             _read_json(data_file)
 
@@ -129,7 +129,20 @@ class TestCategoryIcon:
         assert _category_icon(None) == "✨"
 
     def test_all_categories_have_icons(self):
-        categories = ["rag", "chatbot", "agent", "multi_agent", "automation", "search", "vision", "voice", "coding", "finance", "research", "other"]
+        categories = [
+            "rag",
+            "chatbot",
+            "agent",
+            "multi_agent",
+            "automation",
+            "search",
+            "vision",
+            "voice",
+            "coding",
+            "finance",
+            "research",
+            "other",
+        ]
         for cat in categories:
             icon = _category_icon(cat)
             assert icon
@@ -453,7 +466,10 @@ class TestExportSite:
 
     def test_export_site_creates_index(self, tmp_path: Path):
         data_path = tmp_path / "agents.json"
-        data_path.write_text('[{"id": "test", "name": "Test", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""}]', encoding="utf-8")
+        data_path.write_text(
+            '[{"id": "test", "name": "Test", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""}]',
+            encoding="utf-8",
+        )
 
         output_dir = tmp_path / "site"
         export_site(data_path, output_dir, base_url="https://example.com")
@@ -464,10 +480,31 @@ class TestExportSite:
 
     def test_export_site_creates_agent_pages(self, tmp_path: Path):
         data_path = tmp_path / "agents.json"
-        data_path.write_text(json.dumps([
-            {"id": "agent1", "name": "Agent 1", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""},
-            {"id": "agent2", "name": "Agent 2", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""},
-        ]), encoding="utf-8")
+        data_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "agent1",
+                        "name": "Agent 1",
+                        "description": "Test",
+                        "category": "other",
+                        "frameworks": [],
+                        "llm_providers": [],
+                        "github_url": "",
+                    },
+                    {
+                        "id": "agent2",
+                        "name": "Agent 2",
+                        "description": "Test",
+                        "category": "other",
+                        "frameworks": [],
+                        "llm_providers": [],
+                        "github_url": "",
+                    },
+                ]
+            ),
+            encoding="utf-8",
+        )
 
         output_dir = tmp_path / "site"
         export_site(data_path, output_dir, base_url="https://example.com")
@@ -477,7 +514,10 @@ class TestExportSite:
 
     def test_export_site_creates_assets(self, tmp_path: Path):
         data_path = tmp_path / "agents.json"
-        data_path.write_text('[{"id": "test", "name": "Test", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""}]', encoding="utf-8")
+        data_path.write_text(
+            '[{"id": "test", "name": "Test", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""}]',
+            encoding="utf-8",
+        )
 
         output_dir = tmp_path / "site"
         export_site(data_path, output_dir, base_url="https://example.com")
@@ -487,7 +527,10 @@ class TestExportSite:
 
     def test_export_site_creates_sitemap_with_base_url(self, tmp_path: Path):
         data_path = tmp_path / "agents.json"
-        data_path.write_text('[{"id": "test", "name": "Test", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""}]', encoding="utf-8")
+        data_path.write_text(
+            '[{"id": "test", "name": "Test", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""}]',
+            encoding="utf-8",
+        )
 
         output_dir = tmp_path / "site"
         export_site(data_path, output_dir, base_url="https://example.com")
@@ -497,7 +540,10 @@ class TestExportSite:
 
     def test_export_site_no_sitemap_without_base_url(self, tmp_path: Path):
         data_path = tmp_path / "agents.json"
-        data_path.write_text('[{"id": "test", "name": "Test", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""}]', encoding="utf-8")
+        data_path.write_text(
+            '[{"id": "test", "name": "Test", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""}]',
+            encoding="utf-8",
+        )
 
         output_dir = tmp_path / "site"
         export_site(data_path, output_dir, base_url=None)
@@ -509,11 +555,40 @@ class TestExportSite:
 
     def test_export_site_sorts_by_name(self, tmp_path: Path):
         data_path = tmp_path / "agents.json"
-        data_path.write_text(json.dumps([
-            {"id": "z", "name": "Z Agent", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""},
-            {"id": "a", "name": "A Agent", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""},
-            {"id": "m", "name": "M Agent", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""},
-        ]), encoding="utf-8")
+        data_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "z",
+                        "name": "Z Agent",
+                        "description": "Test",
+                        "category": "other",
+                        "frameworks": [],
+                        "llm_providers": [],
+                        "github_url": "",
+                    },
+                    {
+                        "id": "a",
+                        "name": "A Agent",
+                        "description": "Test",
+                        "category": "other",
+                        "frameworks": [],
+                        "llm_providers": [],
+                        "github_url": "",
+                    },
+                    {
+                        "id": "m",
+                        "name": "M Agent",
+                        "description": "Test",
+                        "category": "other",
+                        "frameworks": [],
+                        "llm_providers": [],
+                        "github_url": "",
+                    },
+                ]
+            ),
+            encoding="utf-8",
+        )
 
         output_dir = tmp_path / "site"
         export_site(data_path, output_dir, base_url="https://example.com")
@@ -591,15 +666,22 @@ class TestEdgeCases:
 
     def test_unicode_in_agent_data(self, tmp_path: Path):
         data_path = tmp_path / "agents.json"
-        data_path.write_text(json.dumps([{
-            "id": "test",
-            "name": "Test Agent 世界",
-            "description": "Test with emoji 🚀",
-            "category": "other",
-            "frameworks": [],
-            "llm_providers": [],
-            "github_url": "",
-        }]), encoding="utf-8")
+        data_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "test",
+                        "name": "Test Agent 世界",
+                        "description": "Test with emoji 🚀",
+                        "category": "other",
+                        "frameworks": [],
+                        "llm_providers": [],
+                        "github_url": "",
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
 
         output_dir = tmp_path / "site"
         export_site(data_path, output_dir, base_url="https://example.com")
@@ -610,15 +692,22 @@ class TestEdgeCases:
 
     def test_very_long_description(self, tmp_path: Path):
         data_path = tmp_path / "agents.json"
-        data_path.write_text(json.dumps([{
-            "id": "test",
-            "name": "Test",
-            "description": "x" * 500,
-            "category": "other",
-            "frameworks": [],
-            "llm_providers": [],
-            "github_url": "",
-        }]), encoding="utf-8")
+        data_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "test",
+                        "name": "Test",
+                        "description": "x" * 500,
+                        "category": "other",
+                        "frameworks": [],
+                        "llm_providers": [],
+                        "github_url": "",
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
 
         output_dir = tmp_path / "site"
         export_site(data_path, output_dir, base_url="https://example.com")
@@ -638,7 +727,10 @@ class TestEdgeCases:
 
     def test_special_chars_in_id(self, tmp_path: Path):
         data_path = tmp_path / "agents.json"
-        data_path.write_text('[{"id": "test with spaces!", "name": "Test", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""}]', encoding="utf-8")
+        data_path.write_text(
+            '[{"id": "test with spaces!", "name": "Test", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""}]',
+            encoding="utf-8",
+        )
 
         output_dir = tmp_path / "site"
         export_site(data_path, output_dir, base_url="https://example.com")
@@ -649,15 +741,22 @@ class TestEdgeCases:
 
     def test_xss_injection_attempt(self, tmp_path: Path):
         data_path = tmp_path / "agents.json"
-        data_path.write_text(json.dumps([{
-            "id": "test",
-            "name": "<script>alert('xss')</script>",
-            "description": "<img src=x onerror=alert('xss')>",
-            "category": "other",
-            "frameworks": [],
-            "llm_providers": [],
-            "github_url": "",
-        }]), encoding="utf-8")
+        data_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "test",
+                        "name": "<script>alert('xss')</script>",
+                        "description": "<img src=x onerror=alert('xss')>",
+                        "category": "other",
+                        "frameworks": [],
+                        "llm_providers": [],
+                        "github_url": "",
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
 
         output_dir = tmp_path / "site"
         export_site(data_path, output_dir, base_url="https://example.com")
@@ -672,10 +771,31 @@ class TestEdgeCases:
 
     def test_duplicate_ids(self, tmp_path: Path):
         data_path = tmp_path / "agents.json"
-        data_path.write_text(json.dumps([
-            {"id": "duplicate", "name": "First", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""},
-            {"id": "duplicate", "name": "Second", "description": "Test", "category": "other", "frameworks": [], "llm_providers": [], "github_url": ""},
-        ]), encoding="utf-8")
+        data_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "duplicate",
+                        "name": "First",
+                        "description": "Test",
+                        "category": "other",
+                        "frameworks": [],
+                        "llm_providers": [],
+                        "github_url": "",
+                    },
+                    {
+                        "id": "duplicate",
+                        "name": "Second",
+                        "description": "Test",
+                        "category": "other",
+                        "frameworks": [],
+                        "llm_providers": [],
+                        "github_url": "",
+                    },
+                ]
+            ),
+            encoding="utf-8",
+        )
 
         output_dir = tmp_path / "site"
         export_site(data_path, output_dir, base_url="https://example.com")

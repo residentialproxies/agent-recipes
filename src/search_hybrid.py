@@ -26,7 +26,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +41,10 @@ def _get_numpy():
     if _numpy is None:
         try:
             import numpy as np
+
             _numpy = np
         except ImportError:
-            raise ImportError("numpy is required for hybrid search. Install with: pip install numpy")
+            raise ImportError("numpy is required for hybrid search. Install with: pip install numpy") from None
     return _numpy
 
 
@@ -53,9 +54,10 @@ def _get_openai():
     if _openai is None:
         try:
             import openai
+
             _openai = openai
         except ImportError:
-            raise ImportError("openai is required for embeddings. Install with: pip install openai")
+            raise ImportError("openai is required for embeddings. Install with: pip install openai") from None
     return _openai
 
 
@@ -70,7 +72,7 @@ class EmbeddingCache:
     def __init__(self, cache_path: Path):
         self.cache_path = Path(cache_path)
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self.embeddings: Dict[str, Dict[str, Any]] = {}
+        self.embeddings: dict[str, dict[str, Any]] = {}
         self._load()
 
     def _load(self) -> None:
@@ -90,7 +92,7 @@ class EmbeddingCache:
         except Exception as e:
             logger.error(f"Failed to save embedding cache: {e}")
 
-    def get(self, agent_id: str, content_hash: str) -> Optional[List[float]]:
+    def get(self, agent_id: str, content_hash: str) -> list[float] | None:
         """
         Get cached embedding if content hash matches.
 
@@ -106,7 +108,7 @@ class EmbeddingCache:
             return cached.get("embedding")
         return None
 
-    def set(self, agent_id: str, content_hash: str, embedding: List[float]) -> None:
+    def set(self, agent_id: str, content_hash: str, embedding: list[float]) -> None:
         """
         Cache an embedding.
 
@@ -127,7 +129,7 @@ class EmbeddingCache:
             self.cache_path.unlink()
 
 
-def compute_content_hash(agent: Dict) -> str:
+def compute_content_hash(agent: dict) -> str:
     """
     Compute stable hash of agent content for cache invalidation.
 
@@ -138,15 +140,18 @@ def compute_content_hash(agent: Dict) -> str:
         MD5 hash of searchable content
     """
     # Combine all searchable fields
-    content = " ".join([
-        str(agent.get("name", "")),
-        str(agent.get("description", "")),
-        str(agent.get("tagline", "")),
-        str(agent.get("category", "")),
-        " ".join(agent.get("frameworks", [])),
-        " ".join(agent.get("llm_providers", [])),
-    ])
-    return hashlib.md5(content.encode("utf-8")).hexdigest()[:12]
+    content = " ".join(
+        [
+            str(agent.get("name", "")),
+            str(agent.get("description", "")),
+            str(agent.get("tagline", "")),
+            str(agent.get("category", "")),
+            " ".join(agent.get("frameworks", [])),
+            " ".join(agent.get("llm_providers", [])),
+        ]
+    )
+    # Not used for security; used for stable cache keys.
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
 
 
 class HybridSearch:
@@ -165,9 +170,9 @@ class HybridSearch:
     def __init__(
         self,
         base_search_engine: Any,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         embedding_model: str = "text-embedding-3-small",
-        cache_path: Optional[Path] = None,
+        cache_path: Path | None = None,
         enable_embeddings: bool = True,
     ):
         """
@@ -215,7 +220,7 @@ class HybridSearch:
             self._batch_embed(missing)
             self.embedding_cache.save()
 
-    def _batch_embed(self, agents_to_embed: List[tuple]) -> None:
+    def _batch_embed(self, agents_to_embed: list[tuple]) -> None:
         """
         Generate embeddings for multiple agents in batch.
 
@@ -229,14 +234,16 @@ class HybridSearch:
         texts = []
         for _, agent, _ in agents_to_embed:
             # Combine searchable fields
-            text = " ".join([
-                agent.get("name", ""),
-                agent.get("description", ""),
-                agent.get("tagline", ""),
-                agent.get("category", ""),
-                " ".join(agent.get("frameworks", [])),
-                " ".join(agent.get("llm_providers", [])),
-            ])
+            text = " ".join(
+                [
+                    agent.get("name", ""),
+                    agent.get("description", ""),
+                    agent.get("tagline", ""),
+                    agent.get("category", ""),
+                    " ".join(agent.get("frameworks", [])),
+                    " ".join(agent.get("llm_providers", [])),
+                ]
+            )
             texts.append(text.strip())
 
         # Batch API call (OpenAI supports up to 2048 inputs per request)
@@ -260,7 +267,7 @@ class HybridSearch:
             except Exception as e:
                 logger.error(f"Failed to generate embeddings for batch {i}: {e}")
 
-    def _get_embedding(self, text: str) -> Optional[List[float]]:
+    def _get_embedding(self, text: str) -> list[float] | None:
         """
         Get embedding for a query text.
 
@@ -283,7 +290,7 @@ class HybridSearch:
             logger.error(f"Failed to generate query embedding: {e}")
             return None
 
-    def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+    def _cosine_similarity(self, vec1: list[float], vec2: list[float]) -> float:
         """
         Compute cosine similarity between two vectors.
 
@@ -299,7 +306,7 @@ class HybridSearch:
         b = np.array(vec2)
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-    def _vector_search(self, query: str, limit: int) -> List[Dict]:
+    def _vector_search(self, query: str, limit: int) -> list[dict]:
         """
         Perform vector similarity search.
 
@@ -339,10 +346,10 @@ class HybridSearch:
 
     def _reciprocal_rank_fusion(
         self,
-        keyword_results: List[Dict],
-        vector_results: List[Dict],
+        keyword_results: list[dict],
+        vector_results: list[dict],
         k: int = 60,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Merge keyword and vector results using Reciprocal Rank Fusion.
 
@@ -394,7 +401,7 @@ class HybridSearch:
 
         return results
 
-    def search(self, query: str, limit: int = 20, use_cache: bool = True) -> List[Dict]:
+    def search(self, query: str, limit: int = 20, use_cache: bool = True) -> list[dict]:
         """
         Hybrid search combining keyword and semantic search.
 

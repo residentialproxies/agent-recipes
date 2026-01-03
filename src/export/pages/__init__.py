@@ -11,4 +11,3 @@ __all__ = [
     "generate_tech_combo_pages",
     "generate_use_case_pages",
 ]
-

@@ -12,11 +12,10 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Set
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +56,7 @@ class Settings:
     # When running behind a reverse proxy, set TRUST_PROXY_HEADERS=true and TRUSTED_PROXY_IPS
     # to correctly derive client IPs from X-Forwarded-For.
     trust_proxy_headers: bool = False
-    trusted_proxy_ips: Set[str] = field(default_factory=set)
+    trusted_proxy_ips: set[str] = field(default_factory=set)
 
     # AI selector (API)
     ai_cache_path: Path = field(default_factory=lambda: Path("data/.ai_selector_cache.json"))
@@ -71,21 +70,25 @@ class Settings:
     indexer_rate_limit: float = 10.0  # requests per second
 
     # Security
-    allowed_readme_hosts: Set[str] = field(default_factory=lambda: {
-        "raw.githubusercontent.com",
-        "github.com",
-    })
+    allowed_readme_hosts: set[str] = field(
+        default_factory=lambda: {
+            "raw.githubusercontent.com",
+            "github.com",
+        }
+    )
 
     # CORS configuration
     # Set CORS_ALLOW_ORIGINS environment variable to comma-separated list of allowed origins
     # Use "*" for development only (allows all origins)
     # Example: CORS_ALLOW_ORIGINS="https://example.com,https://app.example.com"
-    cors_allow_origins: Set[str] = field(default_factory=lambda: {
-        "http://localhost",
-        "http://localhost:8501",  # Streamlit default
-        "http://127.0.0.1",
-        "http://127.0.0.1:8501",
-    })
+    cors_allow_origins: set[str] = field(
+        default_factory=lambda: {
+            "http://localhost",
+            "http://localhost:8501",  # Streamlit default
+            "http://127.0.0.1",
+            "http://127.0.0.1:8501",
+        }
+    )
     cors_allow_credentials: bool = False
     cors_max_age: int = 600  # 10 minutes
 
@@ -164,15 +167,12 @@ class Settings:
                 # Allow all origins - development only
                 # In production, explicitly list allowed origins
                 logger.warning(
-                    "CORS_ALLOW_ORIGINS set to '*' - allowing all origins. "
-                    "This should only be used in development."
+                    "CORS_ALLOW_ORIGINS set to '*' - allowing all origins. " "This should only be used in development."
                 )
                 self.cors_allow_origins = {"*"}
             else:
                 # Parse comma-separated list of origins
-                self.cors_allow_origins = {
-                    origin.strip() for origin in cors_origins.split(",") if origin.strip()
-                }
+                self.cors_allow_origins = {origin.strip() for origin in cors_origins.split(",") if origin.strip()}
         if cors_max_age := os.environ.get("CORS_MAX_AGE"):
             self.cors_max_age = int(cors_max_age)
 
@@ -193,18 +193,18 @@ class Settings:
             self.debug_mode = True
 
     @property
-    def anthropic_api_key(self) -> Optional[str]:
+    def anthropic_api_key(self) -> str | None:
         """Get Anthropic API key from environment (never stored in config)."""
         return os.environ.get("ANTHROPIC_API_KEY")
 
     @property
-    def github_token(self) -> Optional[str]:
+    def github_token(self) -> str | None:
         """Get GitHub token from environment (never stored in config)."""
         return os.environ.get("GITHUB_TOKEN")
 
 
 # Singleton instance
-_settings: Optional[Settings] = None
+_settings: Settings | None = None
 
 
 def get_settings() -> Settings:
@@ -229,51 +229,59 @@ settings = get_settings()
 
 
 # Category and framework constants
-CATEGORIES = frozenset({
-    "rag",
-    "chatbot",
-    "agent",
-    "multi_agent",
-    "automation",
-    "search",
-    "vision",
-    "voice",
-    "coding",
-    "finance",
-    "research",
-    "other",
-})
+CATEGORIES = frozenset(
+    {
+        "rag",
+        "chatbot",
+        "agent",
+        "multi_agent",
+        "automation",
+        "search",
+        "vision",
+        "voice",
+        "coding",
+        "finance",
+        "research",
+        "other",
+    }
+)
 
-FRAMEWORKS = frozenset({
-    "langchain",
-    "llamaindex",
-    "crewai",
-    "autogen",
-    "phidata",
-    "dspy",
-    "haystack",
-    "semantic_kernel",
-    "raw_api",
-    "other",
-})
+FRAMEWORKS = frozenset(
+    {
+        "langchain",
+        "llamaindex",
+        "crewai",
+        "autogen",
+        "phidata",
+        "dspy",
+        "haystack",
+        "semantic_kernel",
+        "raw_api",
+        "other",
+    }
+)
 
-LLM_PROVIDERS = frozenset({
-    "openai",
-    "anthropic",
-    "google",
-    "cohere",
-    "mistral",
-    "ollama",
-    "huggingface",
-    "local",
-    "other",
-})
+LLM_PROVIDERS = frozenset(
+    {
+        "openai",
+        "anthropic",
+        "google",
+        "cohere",
+        "mistral",
+        "ollama",
+        "huggingface",
+        "local",
+        "other",
+    }
+)
 
-COMPLEXITY_LEVELS = frozenset({
-    "beginner",
-    "intermediate",
-    "advanced",
-})
+COMPLEXITY_LEVELS = frozenset(
+    {
+        "beginner",
+        "intermediate",
+        "advanced",
+    }
+)
 
 CATEGORY_ICONS = {
     "rag": "📚",

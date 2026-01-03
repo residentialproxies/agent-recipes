@@ -9,29 +9,103 @@ Provides:
 
 from __future__ import annotations
 
-import re
 from typing import Any
-
 
 # Generic stop words that add little value to tags/search
 _LOW_VALUE_STOPWORDS = {
-    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
-    "of", "with", "by", "from", "as", "is", "was", "are", "were", "be",
-    "been", "being", "have", "has", "had", "do", "does", "did", "will",
-    "would", "could", "should", "may", "might", "can", "this", "that",
-    "these", "those", "allows", "app", "application", "available", "based",
-    "describing", "detailed", "download", "enter", "etc", "features", "format",
-    "friendly", "generate", "generated", "generation", "input", "instruments",
-    "interface", "listening", "mood", "mp3", "music", "output", "prompt",
-    "simple", "they", "track", "type", "user", "users", "want", "will", "with",
-    "using", "use", "used", "uses",
+    "a",
+    "an",
+    "the",
+    "and",
+    "or",
+    "but",
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+    "of",
+    "with",
+    "by",
+    "from",
+    "as",
+    "is",
+    "was",
+    "are",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "could",
+    "should",
+    "may",
+    "might",
+    "can",
+    "this",
+    "that",
+    "these",
+    "those",
+    "allows",
+    "app",
+    "application",
+    "available",
+    "based",
+    "describing",
+    "detailed",
+    "download",
+    "enter",
+    "etc",
+    "features",
+    "format",
+    "friendly",
+    "generate",
+    "generated",
+    "generation",
+    "input",
+    "instruments",
+    "interface",
+    "listening",
+    "mood",
+    "mp3",
+    "music",
+    "output",
+    "prompt",
+    "simple",
+    "they",
+    "track",
+    "type",
+    "user",
+    "users",
+    "want",
+    "using",
+    "use",
+    "used",
+    "uses",
 }
 
 
 # Valid categories for validation
 _VALID_CATEGORIES = {
-    "rag", "chatbot", "agent", "multi_agent", "automation", "search",
-    "vision", "voice", "coding", "finance", "research", "other",
+    "rag",
+    "chatbot",
+    "agent",
+    "multi_agent",
+    "automation",
+    "search",
+    "vision",
+    "voice",
+    "coding",
+    "finance",
+    "research",
+    "other",
 }
 
 
@@ -81,9 +155,8 @@ def validate_agent_data(agent: dict[str, Any]) -> tuple[bool, list[str]]:
 
     # Check github_url format if present
     github_url = agent.get("github_url")
-    if github_url and isinstance(github_url, str):
-        if not github_url.startswith(("http://", "https://", "git@")):
-            issues.append(f"Invalid github_url format: {github_url[:50]}")
+    if github_url and isinstance(github_url, str) and not github_url.startswith(("http://", "https://", "git@")):
+        issues.append(f"Invalid github_url format: {github_url[:50]}")
 
     return len(issues) == 0, issues
 
@@ -109,7 +182,6 @@ def generate_seo_description(agent: dict[str, Any]) -> str:
     category = agent.get("category", "other")
     frameworks = agent.get("frameworks", []) or []
     providers = agent.get("llm_providers", []) or []
-    complexity = agent.get("complexity", "")
 
     # Get primary framework and provider
     primary_fw = frameworks[0] if frameworks else "Python"

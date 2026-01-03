@@ -14,10 +14,8 @@ Tests for:
 - sanitize_final_text()
 """
 
-import tempfile
-from pathlib import Path
 from unittest import mock
-from unittest.mock import MagicMock, Mock
+from unittest.mock import Mock
 
 import pytest
 
@@ -36,7 +34,7 @@ from src.ai_selector import (
     require_budget,
     sanitize_final_text,
 )
-from src.cache import CacheEntry, SQLiteBudget, SQLiteCache
+from src.cache import SQLiteBudget, SQLiteCache
 
 # Aliases for backward compatibility (as defined in ai_selector.py)
 DailyBudget = SQLiteBudget
@@ -82,6 +80,7 @@ class TestNowS:
         """Test that _now_s increases over time."""
         result1 = _now_s()
         import time
+
         time.sleep(0.01)
         result2 = _now_s()
 
@@ -93,91 +92,43 @@ class TestMakeCacheKey:
 
     def test_cache_key_consistency(self) -> None:
         """Test that same inputs produce same cache key."""
-        key1 = make_cache_key(
-            model="claude-3-5-haiku-20241022",
-            query="test query",
-            candidate_ids=["agent1", "agent2"]
-        )
-        key2 = make_cache_key(
-            model="claude-3-5-haiku-20241022",
-            query="test query",
-            candidate_ids=["agent1", "agent2"]
-        )
+        key1 = make_cache_key(model="claude-3-5-haiku-20241022", query="test query", candidate_ids=["agent1", "agent2"])
+        key2 = make_cache_key(model="claude-3-5-haiku-20241022", query="test query", candidate_ids=["agent1", "agent2"])
 
         assert key1 == key2
 
     def test_cache_key_different_models(self) -> None:
         """Test that different models produce different keys."""
-        key1 = make_cache_key(
-            model="model1",
-            query="query",
-            candidate_ids=["agent1"]
-        )
-        key2 = make_cache_key(
-            model="model2",
-            query="query",
-            candidate_ids=["agent1"]
-        )
+        key1 = make_cache_key(model="model1", query="query", candidate_ids=["agent1"])
+        key2 = make_cache_key(model="model2", query="query", candidate_ids=["agent1"])
 
         assert key1 != key2
 
     def test_cache_key_different_queries(self) -> None:
         """Test that different queries produce different keys."""
-        key1 = make_cache_key(
-            model="model",
-            query="query1",
-            candidate_ids=["agent1"]
-        )
-        key2 = make_cache_key(
-            model="model",
-            query="query2",
-            candidate_ids=["agent1"]
-        )
+        key1 = make_cache_key(model="model", query="query1", candidate_ids=["agent1"])
+        key2 = make_cache_key(model="model", query="query2", candidate_ids=["agent1"])
 
         assert key1 != key2
 
     def test_cache_key_different_candidates(self) -> None:
         """Test that different candidates produce different keys."""
-        key1 = make_cache_key(
-            model="model",
-            query="query",
-            candidate_ids=["agent1"]
-        )
-        key2 = make_cache_key(
-            model="model",
-            query="query",
-            candidate_ids=["agent2"]
-        )
+        key1 = make_cache_key(model="model", query="query", candidate_ids=["agent1"])
+        key2 = make_cache_key(model="model", query="query", candidate_ids=["agent2"])
 
         assert key1 != key2
 
     def test_cache_key_order_matters(self) -> None:
         """Test that candidate order affects cache key."""
-        key1 = make_cache_key(
-            model="model",
-            query="query",
-            candidate_ids=["agent1", "agent2"]
-        )
-        key2 = make_cache_key(
-            model="model",
-            query="query",
-            candidate_ids=["agent2", "agent1"]
-        )
+        key1 = make_cache_key(model="model", query="query", candidate_ids=["agent1", "agent2"])
+        key2 = make_cache_key(model="model", query="query", candidate_ids=["agent2", "agent1"])
 
         assert key1 != key2
 
     def test_cache_key_filters_empty_candidates(self) -> None:
         """Test that empty candidate IDs are filtered out."""
-        key1 = make_cache_key(
-            model="model",
-            query="query",
-            candidate_ids=["agent1", "", "agent2", None]
-        )
-        key2 = make_cache_key(
-            model="model",
-            query="query",
-            candidate_ids=["agent1", "agent2"]
-        )
+        key1 = make_cache_key(model="model", query="query", candidate_ids=["agent1", "", "agent2", None])
+        key2 = make_cache_key(model="model", query="query", candidate_ids=["agent1", "agent2"])
 
         assert key1 == key2
 
@@ -228,26 +179,30 @@ class TestBuildAISselectorPrompt:
     def test_prompt_truncates_long_description(self) -> None:
         """Test that long descriptions are truncated."""
         long_desc = "x" * 300
-        agents = [{
-            "id": "agent1",
-            "name": "Agent",
-            "description": long_desc,
-            "category": "other",
-            "frameworks": [],
-        }]
+        agents = [
+            {
+                "id": "agent1",
+                "name": "Agent",
+                "description": long_desc,
+                "category": "other",
+                "frameworks": [],
+            }
+        ]
 
         prompt = build_ai_selector_prompt("test", agents)
         assert "..." in prompt or "\u2026" in prompt  # Ellipsis
 
     def test_prompt_limits_frameworks(self) -> None:
         """Test that only first 3 frameworks are included."""
-        agents = [{
-            "id": "agent1",
-            "name": "Agent",
-            "description": "Test",
-            "category": "other",
-            "frameworks": ["f1", "f2", "f3", "f4", "f5"],
-        }]
+        agents = [
+            {
+                "id": "agent1",
+                "name": "Agent",
+                "description": "Test",
+                "category": "other",
+                "frameworks": ["f1", "f2", "f3", "f4", "f5"],
+            }
+        ]
 
         prompt = build_ai_selector_prompt("test", agents)
         # Should only include first 3
@@ -289,13 +244,15 @@ class TestBuildAISselectorPrompt:
 
     def test_prompt_uses_default_category(self) -> None:
         """Test that missing category defaults to 'other'."""
-        agents = [{
-            "id": "agent1",
-            "name": "Agent",
-            "description": "Test",
-            "category": "",
-            "frameworks": [],
-        }]
+        agents = [
+            {
+                "id": "agent1",
+                "name": "Agent",
+                "description": "Test",
+                "category": "",
+                "frameworks": [],
+            }
+        ]
 
         prompt = build_ai_selector_prompt("test", agents)
         assert "[other;" in prompt
@@ -347,14 +304,16 @@ class TestBuildWebmanusPrompt:
 
     def test_prompt_truncates_long_tagline(self) -> None:
         """Test that long taglines are truncated."""
-        workers = [{
-            "slug": "worker1",
-            "name": "Worker",
-            "tagline": "x" * 200,
-            "pricing": "free",
-            "labor_score": 5.0,
-            "capabilities": [],
-        }]
+        workers = [
+            {
+                "slug": "worker1",
+                "name": "Worker",
+                "tagline": "x" * 200,
+                "pricing": "free",
+                "labor_score": 5.0,
+                "capabilities": [],
+            }
+        ]
 
         prompt = build_webmanus_prompt("test", workers)
         assert "..." in prompt or "\u2026" in prompt
@@ -533,30 +492,18 @@ class TestEstimateCostUsd:
     def test_cost_calculation(self) -> None:
         """Test basic cost calculation."""
         # For Haiku: $0.80/M input, $4.00/M output
-        cost = estimate_cost_usd(
-            model="claude-3-5-haiku-20241022",
-            input_tokens=1000,
-            output_tokens=500
-        )
+        cost = estimate_cost_usd(model="claude-3-5-haiku-20241022", input_tokens=1000, output_tokens=500)
         expected = (1000 / 1_000_000) * 0.80 + (500 / 1_000_000) * 4.00
         assert abs(cost - expected) < 0.0001
 
     def test_zero_tokens(self) -> None:
         """Test cost with zero tokens."""
-        cost = estimate_cost_usd(
-            model="claude-3-5-haiku-20241022",
-            input_tokens=0,
-            output_tokens=0
-        )
+        cost = estimate_cost_usd(model="claude-3-5-haiku-20241022", input_tokens=0, output_tokens=0)
         assert cost == 0.0
 
     def test_large_token_counts(self) -> None:
         """Test cost with large token counts."""
-        cost = estimate_cost_usd(
-            model="claude-3-5-haiku-20241022",
-            input_tokens=1_000_000,
-            output_tokens=500_000
-        )
+        cost = estimate_cost_usd(model="claude-3-5-haiku-20241022", input_tokens=1_000_000, output_tokens=500_000)
         # $0.80 + $2.00 = $2.80
         assert abs(cost - 2.80) < 0.01
 
@@ -577,10 +524,7 @@ class TestRequireBudget:
 
         # Should not raise
         require_budget(
-            budget=mock_budget,
-            model="claude-3-5-haiku-20241022",
-            prompt="test prompt",
-            max_output_tokens=100
+            budget=mock_budget, model="claude-3-5-haiku-20241022", prompt="test prompt", max_output_tokens=100
         )
 
     def test_require_budget_raises_when_exceeded(self, mock_budget: Mock) -> None:
@@ -589,22 +533,14 @@ class TestRequireBudget:
 
         with pytest.raises(AISelectorError, match="Daily AI budget exceeded"):
             require_budget(
-                budget=mock_budget,
-                model="claude-3-5-haiku-20241022",
-                prompt="test prompt",
-                max_output_tokens=100
+                budget=mock_budget, model="claude-3-5-haiku-20241022", prompt="test prompt", max_output_tokens=100
             )
 
     def test_require_budget_estimates_cost(self, mock_budget: Mock) -> None:
         """Test that require_budget estimates cost correctly."""
         prompt = "x" * 1000  # ~250 tokens
 
-        require_budget(
-            budget=mock_budget,
-            model="claude-3-5-haiku-20241022",
-            prompt=prompt,
-            max_output_tokens=100
-        )
+        require_budget(budget=mock_budget, model="claude-3-5-haiku-20241022", prompt=prompt, max_output_tokens=100)
 
         # Check that would_exceed was called with estimated cost
         mock_budget.would_exceed.assert_called_once()
@@ -698,6 +634,7 @@ class TestSanitizeFinalText:
         """Test that ValidationError is handled gracefully."""
         # Create a mock that raises ValidationError
         from src.security.validators import ValidationError
+
         with mock.patch("src.ai_selector.sanitize_llm_output", side_effect=ValidationError("Invalid")):
             result = sanitize_final_text("test")
             assert result == "AI response could not be safely displayed."
@@ -705,6 +642,7 @@ class TestSanitizeFinalText:
     def test_sanitize_empty_after_sanitization(self) -> None:
         """Test text that becomes empty after sanitization."""
         from src.security.validators import ValidationError
+
         with mock.patch("src.ai_selector.sanitize_llm_output", side_effect=ValidationError("Too dangerous")):
             result = sanitize_final_text("<script>evil</script>")
             assert result == "AI response could not be safely displayed."

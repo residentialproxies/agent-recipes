@@ -7,8 +7,8 @@ Tests meta description generation, keyword generation, and Open Graph tags.
 import pytest
 
 from src.export.seo import (
-    _generate_meta_description,
     _generate_keywords_meta_tag,
+    _generate_meta_description,
     _generate_open_graph_tags,
     _generate_page_title,
 )
@@ -70,7 +70,9 @@ class TestGenerateMetaDescription:
         """Meta description should be within target length (120-158 chars)."""
         min_len, max_len = expected_length_range
         result = _generate_meta_description(agent)
-        assert min_len <= len(result) <= max_len, f"Description length {len(result)} not in range [{min_len}, {max_len}]: {result}"
+        assert (
+            min_len <= len(result) <= max_len
+        ), f"Description length {len(result)} not in range [{min_len}, {max_len}]: {result}"
 
     def test_meta_description_rag_category(self):
         """RAG category should get specific wording."""
@@ -296,7 +298,7 @@ class TestGenerateKeywordsMetaTag:
         }
         result = _generate_keywords_meta_tag(agent)
         # Count keywords by splitting on comma
-        keyword_count = len([k for k in result.split('content="')[1].split('" />')[0].split(', ')])
+        keyword_count = len(result.split('content="')[1].split('" />')[0].split(", "))
         assert keyword_count <= 15
 
 

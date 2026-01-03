@@ -7,13 +7,12 @@ already uses request.app.state for most stateful components.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import Request
 
+from src.api.state import AppState
+from src.config import settings
 from src.data_store import AgentsSnapshot, get_search_engine, load_agents
 from src.repository import AgentRepo
-from src.api.state import AppState
 
 
 def get_state(request: Request) -> AppState:
@@ -36,7 +35,7 @@ def get_search_engine_for_request(request: Request):
 
 def get_webmanus_repo(request: Request) -> AgentRepo:
     state = get_state(request)
-    repo: Optional[AgentRepo] = state.webmanus_repo
+    repo: AgentRepo | None = state.webmanus_repo
     if repo is None:
         repo = AgentRepo(str(settings.webmanus_db_path))
         state.webmanus_repo = repo

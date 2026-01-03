@@ -16,18 +16,17 @@ from __future__ import annotations
 
 import hashlib
 import time
-from dataclasses import dataclass
-from datetime import date
-from pathlib import Path
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from typing import Any
 
-from src.cache import CacheEntry, SQLiteCache, SQLiteBudget
+from src.cache import CacheEntry, SQLiteBudget, SQLiteCache  # noqa: F401
 from src.config import settings
 from src.security.validators import ValidationError, sanitize_llm_output
 
 
 class AISelectorError(RuntimeError):
     """Exception raised for AI selector errors."""
+
     pass
 
 
@@ -44,6 +43,7 @@ def _now_s() -> float:
 # =============================================================================
 # Centralized Anthropic Service
 # =============================================================================
+
 
 class AnthropicService:
     """
@@ -77,7 +77,7 @@ class AnthropicService:
         "connection": "Upstream connection error",
     }
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "claude-3-5-haiku-20241022"):
+    def __init__(self, api_key: str | None = None, model: str = "claude-3-5-haiku-20241022"):
         """
         Initialize the Anthropic service.
 
@@ -87,7 +87,7 @@ class AnthropicService:
         """
         self._api_key = api_key or settings.anthropic_api_key
         self._model = model
-        self._client: Optional[Any] = None
+        self._client: Any | None = None
 
     @property
     def client(self) -> Any:
@@ -104,7 +104,7 @@ class AnthropicService:
                     raise RuntimeError("anthropic package is required") from exc
                 anthropic = api_mod.anthropic  # type: ignore
                 if not getattr(anthropic, "Anthropic", None):
-                    raise RuntimeError("anthropic package is required")
+                    raise RuntimeError("anthropic package is required") from None
             if not self._api_key:
                 raise RuntimeError("ANTHROPIC_API_KEY is required")
             self._client = anthropic.Anthropic(api_key=self._api_key)
@@ -114,8 +114,8 @@ class AnthropicService:
         self,
         messages: list[dict[str, str]],
         max_tokens: int,
-        model: Optional[str] = None,
-        timeout: Optional[int] = None,
+        model: str | None = None,
+        timeout: int | None = None,
     ) -> Any:
         """
         Create a non-streaming message request.
@@ -159,8 +159,8 @@ class AnthropicService:
         self,
         messages: list[dict[str, str]],
         max_tokens: int,
-        model: Optional[str] = None,
-        timeout: Optional[int] = None,
+        model: str | None = None,
+        timeout: int | None = None,
     ) -> Any:
         """
         Create a streaming message request.
@@ -177,7 +177,6 @@ class AnthropicService:
         Raises:
             HTTPException: For API errors with appropriate status codes.
         """
-        from fastapi import HTTPException
 
         model = model or self._model
         timeout = timeout or settings.llm_timeout_seconds
@@ -318,9 +317,7 @@ def build_ai_selector_prompt(query: str, agents: list[dict], *, max_agents: int 
         frameworks = a.get("frameworks") or []
         frameworks = [str(f).strip() for f in frameworks if f][:3]
 
-        candidates.append(
-            f"- {agent_id}: {name} — {description} [{category}; {', '.join(frameworks)}]"
-        )
+        candidates.append(f"- {agent_id}: {name} — {description} [{category}; {', '.join(frameworks)}]")
 
     agent_list = "\n".join(candidates)
     return f"""You recommend the best matching agent examples.
@@ -472,6 +469,7 @@ def extract_json_object(text: str) -> dict:
 
     raise AISelectorError("Unterminated JSON object in response")
 
+
 def normalize_query_for_cache(query: str) -> str:
     """
     Normalize query text for semantic caching.
@@ -494,19 +492,19 @@ def normalize_query_for_cache(query: str) -> str:
 
     # Remove common query modifiers that don't change intent
     modifiers = [
-        r'\b(best|top|good|great|excellent|recommended)\b',
-        r'\b(show me|find|get|give me|i need|i want)\b',
-        r'\b(please|thanks|thank you)\b',
-        r'\b(a|an|the)\b',
+        r"\b(best|top|good|great|excellent|recommended)\b",
+        r"\b(show me|find|get|give me|i need|i want)\b",
+        r"\b(please|thanks|thank you)\b",
+        r"\b(a|an|the)\b",
     ]
     for pattern in modifiers:
-        normalized = re.sub(pattern, ' ', normalized)
+        normalized = re.sub(pattern, " ", normalized)
 
     # Normalize whitespace
-    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    normalized = re.sub(r"\s+", " ", normalized).strip()
 
     # Pluralization normalization (simple heuristic)
-    normalized = re.sub(r'\b(\w+)s\b', r'\1', normalized)
+    normalized = re.sub(r"\b(\w+)s\b", r"\1", normalized)
 
     return normalized
 
@@ -531,18 +529,6 @@ def make_cache_key(*, model: str, query: str, candidate_ids: Iterable[str]) -> s
     normalized_query = normalize_query_for_cache(query)
     joined = ",".join([c for c in candidate_ids if c])
     return _sha256(f"{model}\n{normalized_query}\n{joined}")
-
-
-# CacheEntry is re-exported from src.cache for backward compatibility
-# The actual class is defined in src/cache.CacheEntry
-# We keep this definition here for type hints and documentation
-@dataclass
-class CacheEntry:
-    created_at: float
-    model: str
-    text: str
-    usage: dict
-    cost_usd: float
 
 
 # FileTTLCache is now an alias to SQLiteCache for backward compatibility
@@ -607,13 +593,7 @@ def estimate_cost_usd(*, model: str, input_tokens: int, output_tokens: int) -> f
     return (input_tokens / 1_000_000) * in_usd_m + (output_tokens / 1_000_000) * out_usd_m
 
 
-def require_budget(
-    *,
-    budget: DailyBudget,
-    model: str,
-    prompt: str,
-    max_output_tokens: int
-) -> None:
+def require_budget(*, budget: DailyBudget, model: str, prompt: str, max_output_tokens: int) -> None:
     """
     Check if estimated cost is within daily budget.
 

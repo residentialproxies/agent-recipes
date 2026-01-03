@@ -22,7 +22,6 @@ import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Union
 
 from src.config import settings
 from src.search import AgentSearch
@@ -39,6 +38,7 @@ def _get_sqlite_search_class():
     if _SQLiteAgentSearch is None:
         try:
             from src.search_sqlite import SQLiteAgentSearch
+
             _SQLiteAgentSearch = SQLiteAgentSearch
         except ImportError as e:
             logger.error(f"Failed to import SQLiteAgentSearch: {e}")
@@ -53,8 +53,8 @@ class AgentsSnapshot:
 
 
 _lock = threading.Lock()
-_snapshot: Optional[AgentsSnapshot] = None
-_search_engine: Optional[Union[AgentSearch, any]] = None
+_snapshot: AgentsSnapshot | None = None
+_search_engine: AgentSearch | any | None = None
 
 
 def _read_agents_file(path: Path) -> list[dict]:
@@ -66,7 +66,7 @@ def _read_agents_file(path: Path) -> list[dict]:
     return []
 
 
-def load_agents(*, path: Optional[Path] = None) -> AgentsSnapshot:
+def load_agents(*, path: Path | None = None) -> AgentsSnapshot:
     """
     Load agents from disk and cache by mtime.
 
@@ -87,7 +87,7 @@ def load_agents(*, path: Optional[Path] = None) -> AgentsSnapshot:
         return _snapshot
 
 
-def get_search_engine(*, snapshot: Optional[AgentsSnapshot] = None) -> Union[AgentSearch, any]:
+def get_search_engine(*, snapshot: AgentsSnapshot | None = None) -> AgentSearch | any:
     """
     Get a cached search engine instance for the current agents snapshot.
 
@@ -167,4 +167,3 @@ def get_search_engine(*, snapshot: Optional[AgentsSnapshot] = None) -> Union[Age
                 _search_engine = base_engine
 
         return _search_engine
-

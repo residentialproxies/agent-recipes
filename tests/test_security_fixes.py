@@ -8,23 +8,18 @@ Tests for:
 4. CSP enhancements
 """
 
-import json
-import sqlite3
-import os
-from pathlib import Path
-from typing import Set
 import pytest
 
 from src.repository import AgentRepo
-from src.security.sql import (
-    escape_like_pattern,
-    build_like_clause,
-    validate_search_input,
-)
 from src.security.markdown import (
-    sanitize_markdown,
-    sanitize_html_only,
     MarkdownSanitizer,
+    sanitize_html_only,
+    sanitize_markdown,
+)
+from src.security.sql import (
+    build_like_clause,
+    escape_like_pattern,
+    validate_search_input,
 )
 
 
@@ -42,7 +37,13 @@ class TestSQLInjectionPrevention:
             ["test"],
         )
         repo.upsert(
-            {"slug": "test2", "name": "Another Agent", "tagline": "No percent sign", "pricing": "free", "labor_score": 5.0},
+            {
+                "slug": "test2",
+                "name": "Another Agent",
+                "tagline": "No percent sign",
+                "pricing": "free",
+                "labor_score": 5.0,
+            },
             ["test"],
         )
 
@@ -268,7 +269,7 @@ class TestMarkdownXSSPrevention:
 
     def test_style_tag_removed(self):
         """Test that style tags are removed."""
-        malicious = '<style>body { background: red; }</style> content'
+        malicious = "<style>body { background: red; }</style> content"
         result = sanitize_markdown(malicious)
         assert "<style>" not in result or "</style>" not in result
 
@@ -288,13 +289,13 @@ class TestMarkdownXSSPrevention:
 
     def test_safe_links_preserved(self):
         """Test that safe links are preserved."""
-        safe = '[Link](https://example.com)'
+        safe = "[Link](https://example.com)"
         result = sanitize_markdown(safe)
         assert "example.com" in result
 
     def test_safe_images_preserved(self):
         """Test that safe images are preserved."""
-        safe = '![Alt text](https://example.com/image.jpg)'
+        safe = "![Alt text](https://example.com/image.jpg)"
         result = sanitize_markdown(safe)
         assert "example.com" in result
 
@@ -311,7 +312,7 @@ class TestMarkdownXSSPrevention:
 
     def test_xss_with_html_encoding(self):
         """Test XSS with HTML encoding attempts."""
-        malicious = '<div>&#x3C;script&#x3E;alert(1)&#x3C;/script&#x3E;</div>'
+        malicious = "<div>&#x3C;script&#x3E;alert(1)&#x3C;/script&#x3E;</div>"
         result = sanitize_markdown(malicious)
         # Should remove or escape the encoded script tag
         assert "<script>" not in result or "&lt;" in result
@@ -324,10 +325,7 @@ class TestMarkdownXSSPrevention:
 
     def test_custom_allowed_tags(self):
         """Test custom allowed tags."""
-        sanitizer = MarkdownSanitizer(
-            allowed_tags={"p", "strong", "em"},
-            strip_disallowed_tags=True
-        )
+        sanitizer = MarkdownSanitizer(allowed_tags={"p", "strong", "em"}, strip_disallowed_tags=True)
         html = "<p>Test</p><div>Removed</div><strong>Kept</strong>"
         result = sanitizer.sanitize(html)
         # Should keep p, strong but strip div
@@ -358,15 +356,33 @@ class TestRepositorySearchPageIntegration:
 
         # Add test data
         repo.upsert(
-            {"slug": "free1", "name": "100% Free Tool", "tagline": "Free forever", "pricing": "free", "labor_score": 8.0},
+            {
+                "slug": "free1",
+                "name": "100% Free Tool",
+                "tagline": "Free forever",
+                "pricing": "free",
+                "labor_score": 8.0,
+            },
             ["free", "tool"],
         )
         repo.upsert(
-            {"slug": "free2", "name": "Another Free Tool", "tagline": "Also 100% free", "pricing": "free", "labor_score": 7.0},
+            {
+                "slug": "free2",
+                "name": "Another Free Tool",
+                "tagline": "Also 100% free",
+                "pricing": "free",
+                "labor_score": 7.0,
+            },
             ["free", "tool"],
         )
         repo.upsert(
-            {"slug": "paid1", "name": "Paid Tool", "tagline": "Premium features", "pricing": "paid", "labor_score": 9.0},
+            {
+                "slug": "paid1",
+                "name": "Paid Tool",
+                "tagline": "Premium features",
+                "pricing": "paid",
+                "labor_score": 9.0,
+            },
             ["paid", "tool"],
         )
 
@@ -385,7 +401,13 @@ class TestRepositorySearchPageIntegration:
         # Add test data
         for i in range(5):
             repo.upsert(
-                {"slug": f"agent{i}", "name": f"Agent {i}", "tagline": f"Description {i}", "pricing": "free", "labor_score": 5.0 + i},
+                {
+                    "slug": f"agent{i}",
+                    "name": f"Agent {i}",
+                    "tagline": f"Description {i}",
+                    "pricing": "free",
+                    "labor_score": 5.0 + i,
+                },
                 ["test"],
             )
 
@@ -405,6 +427,7 @@ class TestCorsConfiguration:
     def test_default_cors_origins_are_restricted(self):
         """Test that default CORS origins are restricted to localhost."""
         from src.config import Settings
+
         settings = Settings()
         # Should not include wildcard by default
         assert "*" not in settings.cors_allow_origins
@@ -414,7 +437,8 @@ class TestCorsConfiguration:
     def test_cors_from_env_var(self, monkeypatch):
         """Test that CORS can be configured via environment variable."""
         monkeypatch.setenv("CORS_ALLOW_ORIGINS", "https://example.com,https://app.example.com")
-        from src.config import Settings, reload_settings
+        from src.config import reload_settings
+
         settings = reload_settings()
         assert "https://example.com" in settings.cors_allow_origins
         assert "https://app.example.com" in settings.cors_allow_origins
@@ -423,7 +447,8 @@ class TestCorsConfiguration:
     def test_cors_wildcard_from_env(self, monkeypatch):
         """Test that CORS wildcard can be set (with warning)."""
         monkeypatch.setenv("CORS_ALLOW_ORIGINS", "*")
-        from src.config import Settings, reload_settings
+        from src.config import reload_settings
+
         settings = reload_settings()
         assert "*" in settings.cors_allow_origins
 
@@ -434,13 +459,15 @@ class TestCSPConfiguration:
     def test_csp_nonce_enabled_by_default(self):
         """Test that CSP nonce is enabled by default."""
         from src.config import Settings
+
         settings = Settings()
         assert settings.csp_use_nonce is True
 
     def test_csp_nonce_can_be_disabled(self, monkeypatch):
         """Test that CSP nonce can be disabled via environment."""
         monkeypatch.setenv("CSP_USE_NONCE", "false")
-        from src.config import Settings, reload_settings
+        from src.config import reload_settings
+
         settings = reload_settings()
         assert settings.csp_use_nonce is False
 

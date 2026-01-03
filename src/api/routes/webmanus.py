@@ -5,13 +5,15 @@ WebManus (workers + consult) routes.
 from __future__ import annotations
 
 import json
+import logging
 import time
-from typing import Any, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 import src.api as api_mod
+from src.affiliate_manager import batch_inject
 from src.ai_selector import (
     AISelectorError,
     AnthropicService,
@@ -23,26 +25,26 @@ from src.ai_selector import (
     make_cache_key,
     require_budget,
 )
-from src.affiliate_manager import batch_inject
 from src.api.dependencies import get_ai_budget, get_ai_cache, get_rate_limiter, get_webmanus_repo
 from src.api.middleware import get_client_ip
 from src.api.models import WebManusConsultRequest, WebManusConsultResponse, WebManusRecommendation
 from src.config import settings
 
 router = APIRouter(prefix="/v1", tags=["webmanus"])
+logger = logging.getLogger(__name__)
 
 
 def _normalize_webmanus_consult_result(
     raw: dict,
     *,
     candidate_slugs: list[str],
-    candidate_meta_by_slug: Optional[dict[str, dict]] = None,
+    candidate_meta_by_slug: dict[str, dict] | None = None,
 ) -> dict:
     parsed = WebManusConsultResponse.model_validate(raw)
-    allowed = set([s for s in candidate_slugs if s])
+    allowed = {s for s in candidate_slugs if s}
     meta = candidate_meta_by_slug or {}
 
-    cleaned: List[WebManusRecommendation] = []
+    cleaned: list[WebManusRecommendation] = []
     seen = set()
     for rec in parsed.recommendations or []:
         if rec.slug not in allowed:
@@ -73,8 +75,8 @@ def list_workers(
     request: Request,
     response: Response,
     q: str = Query(default="", max_length=200),
-    capability: Optional[str] = Query(default=None, max_length=80),
-    pricing: Optional[str] = Query(default=None, max_length=40),
+    capability: str | None = Query(default=None, max_length=80),
+    pricing: str | None = Query(default=None, max_length=40),
     min_score: float = Query(default=0.0, ge=0.0, le=10.0),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -152,8 +154,8 @@ def consult(payload: WebManusConsultRequest, request: Request) -> JSONResponse:
                 content=cached_obj,
                 headers={"X-Cache": "HIT", "X-Model": cached.model, "Cache-Control": "no-store"},
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Ignoring invalid cached consult payload: %s", exc)
 
     rate_limiter = get_rate_limiter(request)
     client_ip = get_client_ip(request)
@@ -251,7 +253,7 @@ def consult_stream(payload: WebManusConsultRequest, request: Request) -> Streami
 
     def _sse(data: Any, *, event: str = "message") -> bytes:
         line = json.dumps(data, ensure_ascii=False)
-        return f"event: {event}\ndata: {line}\n\n".encode("utf-8")
+        return f"event: {event}\ndata: {line}\n\n".encode()
 
     def generator():
         if cached:
@@ -287,7 +289,7 @@ def consult_stream(payload: WebManusConsultRequest, request: Request) -> Streami
             return
 
         anthropic_service = AnthropicService(api_key=settings.anthropic_api_key)
-        chunks: List[str] = []
+        chunks: list[str] = []
         response_obj = None
         try:
             with anthropic_service.create_streaming(
@@ -340,6 +342,8 @@ def consult_stream(payload: WebManusConsultRequest, request: Request) -> Streami
             ),
         )
 
-        yield _sse({"cached": False, "done": True, "result": result, "usage": usage, "cost_usd": cost_usd}, event="done")
+        yield _sse(
+            {"cached": False, "done": True, "result": result, "usage": usage, "cost_usd": cost_usd}, event="done"
+        )
 
     return StreamingResponse(generator(), media_type="text/event-stream")

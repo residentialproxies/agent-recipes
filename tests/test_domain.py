@@ -11,9 +11,8 @@ Covers:
 - Complexity ranking and time estimation
 """
 
-from typing import Optional, Tuple
-
 import pytest
+
 from src import domain
 from src.config import CATEGORY_ICONS
 
@@ -72,7 +71,7 @@ class TestParseGithubTreeUrl:
             ("https://github.com/user/repo/blob/main/file.py", None),  # blob, not tree
         ],
     )
-    def test_parse_github_tree_url(self, url: str, expected: Optional[Tuple[str, str, str]]):
+    def test_parse_github_tree_url(self, url: str, expected: tuple[str, str, str] | None):
         result = domain.parse_github_tree_url(url)
         assert result == expected
 
@@ -199,7 +198,7 @@ class TestSafeMermaidLabel:
             (None, "Other"),
         ],
     )
-    def test_safe_mermaid_label(self, value: Optional[str], expected: str):
+    def test_safe_mermaid_label(self, value: str | None, expected: str):
         result = domain.safe_mermaid_label(value)
         assert result == expected
 
@@ -331,14 +330,32 @@ class TestRecommendSimilar:
         assert out[0]["id"] == "sim1"
 
     def test_recommends_excludes_base_agent(self):
-        base = {"id": "a", "category": "rag", "frameworks": ["langchain"], "llm_providers": ["openai"], "design_pattern": "rag"}
+        base = {
+            "id": "a",
+            "category": "rag",
+            "frameworks": ["langchain"],
+            "llm_providers": ["openai"],
+            "design_pattern": "rag",
+        }
         out = domain.recommend_similar(base, [base], limit=5)
         assert len(out) == 0  # Base agent excluded
 
     def test_recommends_respects_limit(self):
-        base = {"id": "a", "category": "rag", "frameworks": ["langchain"], "llm_providers": ["openai"], "design_pattern": "rag"}
+        base = {
+            "id": "a",
+            "category": "rag",
+            "frameworks": ["langchain"],
+            "llm_providers": ["openai"],
+            "design_pattern": "rag",
+        }
         others = [
-            {"id": f"agent{i}", "category": "rag", "frameworks": ["langchain"], "llm_providers": ["openai"], "design_pattern": "rag"}
+            {
+                "id": f"agent{i}",
+                "category": "rag",
+                "frameworks": ["langchain"],
+                "llm_providers": ["openai"],
+                "design_pattern": "rag",
+            }
             for i in range(10)
         ]
         out = domain.recommend_similar(base, others, limit=3)
@@ -477,12 +494,25 @@ class TestCategoryIcons:
     """Tests for category icon mapping."""
 
     def test_all_categories_have_icons(self):
-        for category, icon in CATEGORY_ICONS.items():
+        for _category, icon in CATEGORY_ICONS.items():
             assert isinstance(icon, str)
             assert len(icon) > 0
 
     def test_expected_categories_present(self):
-        expected = ["rag", "chatbot", "agent", "multi_agent", "automation", "search", "vision", "voice", "coding", "finance", "research", "other"]
+        expected = [
+            "rag",
+            "chatbot",
+            "agent",
+            "multi_agent",
+            "automation",
+            "search",
+            "vision",
+            "voice",
+            "coding",
+            "finance",
+            "research",
+            "other",
+        ]
         for cat in expected:
             assert cat in CATEGORY_ICONS
 

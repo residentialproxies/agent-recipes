@@ -12,8 +12,6 @@ import json
 import re
 import unicodedata
 from datetime import datetime
-from typing import Any, Optional
-
 
 # Common prefixes that should be stripped from agent names for shorter slugs
 SLUG_PREFIXES_TO_REMOVE = (
@@ -55,7 +53,7 @@ def slugify(value: str, *, max_length: int = 50) -> str:
     # Remove common prefixes
     for prefix in SLUG_PREFIXES_TO_REMOVE:
         if value.startswith(prefix):
-            value = value[len(prefix):]
+            value = value[len(prefix) :]
             break
 
     # Transliterate non-ASCII characters (e.g., -> cafe)
@@ -78,10 +76,7 @@ def slugify(value: str, *, max_length: int = 50) -> str:
     if len(value) > max_length:
         # Find the last hyphen before max_length
         last_hyphen = value.rfind("-", 0, max_length)
-        if last_hyphen > max_length // 2:  # Only if we get at least half the max
-            value = value[:last_hyphen]
-        else:
-            value = value[:max_length].rstrip("-")
+        value = value[:last_hyphen] if last_hyphen > max_length // 2 else value[:max_length].rstrip("-")
 
     return value or "agent"
 
@@ -205,7 +200,7 @@ def generate_keywords(agent: dict) -> list[str]:
     return sorted(keywords)
 
 
-def generate_article_published_time(agent: dict) -> Optional[str]:
+def generate_article_published_time(agent: dict) -> str | None:
     """Generate article published_time meta tag value.
 
     Args:
@@ -271,12 +266,14 @@ def generate_collection_page_schema(
     items = []
     for agent in agents[:20]:  # Limit to first 20 for performance
         agent_url = f"{base_url}/agents/{agent.get('id', '')}/"
-        items.append({
-            "@type": "ListItem",
-            "position": len(items) + 1,
-            "name": agent.get("name", ""),
-            "url": agent_url,
-        })
+        items.append(
+            {
+                "@type": "ListItem",
+                "position": len(items) + 1,
+                "name": agent.get("name", ""),
+                "url": agent_url,
+            }
+        )
 
     schema = {
         "@context": "https://schema.org",
@@ -293,8 +290,8 @@ def generate_webpage_schema(
     title: str,
     description: str,
     url: str,
-    published_time: Optional[str] = None,
-    modified_time: Optional[str] = None,
+    published_time: str | None = None,
+    modified_time: str | None = None,
 ) -> str:
     """Generate WebPage Schema.org markup for a generic page.
 
@@ -342,7 +339,7 @@ def generate_keywords_meta_tag(keywords: list[str]) -> str:
 
 def get_breadcrumb_links(
     agent: dict,
-    base_url: str,
+    _base_url: str,
 ) -> list[tuple[str, str]]:
     """Generate breadcrumb navigation links for an agent page.
 
@@ -370,7 +367,7 @@ def get_breadcrumb_links(
     return breadcrumbs
 
 
-def get_related_category_links(agent: dict, all_agents: list[dict]) -> list[tuple[str, str]]:
+def get_related_category_links(agent: dict, _all_agents: list[dict]) -> list[tuple[str, str]]:
     """Generate internal links to related category pages.
 
     Args:
@@ -408,9 +405,9 @@ def get_related_category_links(agent: dict, all_agents: list[dict]) -> list[tupl
 
 def render_sitemap_url(
     loc: str,
-    lastmod: Optional[str] = None,
-    changefreq: Optional[str] = None,
-    priority: Optional[float] = None,
+    lastmod: str | None = None,
+    changefreq: str | None = None,
+    priority: float | None = None,
 ) -> str:
     """Render a single URL entry for sitemap XML.
 

@@ -5,19 +5,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
+from src.export._utils import _write
 from src.export.data import BEST_OF_PAGES
 from src.export.pages._shared import filter_agents, sort_agents
 from src.export.templates import _render_category_landing
-from src.export._utils import _write
 
 
 def generate_best_of_pages(
     agents: list[dict],
     output_dir: Path,
     *,
-    base_url: Optional[str],
+    base_url: str | None,
     site_url: str,
     additional_urls: list[str],
 ) -> None:
@@ -45,4 +44,3 @@ def generate_best_of_pages(
             ),
         )
         additional_urls.append(f"{site_url}/{slug}/")
-
