@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { HeroSection } from "@/components/hero-section";
 import { AIConciergeCTA } from "@/components/ai-concierge";
 import { AgentGrid } from "@/components/agent-grid";
-import { getAgents } from "@/lib/api";
+import { getAgents } from "@/lib/api.server";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 

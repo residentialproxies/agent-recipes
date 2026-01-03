@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { getAgents } from "@/lib/api";
+import { getAgents } from "@/lib/api.server";
 import { loadRepoAgents } from "@/lib/repo-agents";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

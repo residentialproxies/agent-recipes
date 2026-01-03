@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import AgentDetail from "./agent-detail";
-import { getAgent } from "@/lib/api";
+import { getAgent } from "@/lib/api.server";
 import { loadRepoAgentById, loadRepoAgentIds } from "@/lib/repo-agents";
 import type { Agent } from "@/types/agent";
 

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getAgents, getFilters } from "@/lib/api";
+import { getAgents, getFilters } from "@/lib/api.server";
 import { AgentGrid } from "@/components/agent-grid";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

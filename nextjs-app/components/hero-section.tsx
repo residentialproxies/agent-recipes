@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { getAgents, getFilters } from "@/lib/api";
+import { getAgents, getFilters } from "@/lib/api.server";
 
 export async function HeroSection() {
   const [agentsRes, filters] = await Promise.all([
