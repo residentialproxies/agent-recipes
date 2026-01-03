@@ -1,14 +1,18 @@
 import type { MetadataRoute } from "next";
-import { headers } from "next/headers";
 import { fetchWorkers } from "@/lib/api";
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-static";
+
+function siteUrl(): string {
+  const raw =
+    process.env.SITE_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    "http://localhost:3000";
+  return raw.endsWith("/") ? raw.slice(0, -1) : raw;
+}
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const h = await headers();
-  const host = h.get("x-forwarded-host") || h.get("host") || "localhost:3000";
-  const proto = h.get("x-forwarded-proto") || "http";
-  const baseUrl = `${proto}://${host}`;
+  const baseUrl = siteUrl();
   const now = new Date();
   const entries: MetadataRoute.Sitemap = [
     {
